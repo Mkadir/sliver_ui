@@ -1,5 +1,17 @@
 [
   {
+    "method": "POST",
+    "pattern": "/api/auth/login"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/auth/logout"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/auth/me"
+  },
+  {
     "method": "GET",
     "pattern": "/api/info"
   },
@@ -414,6 +426,22 @@
   {
     "method": "GET",
     "pattern": "/api/canaries"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/http-c2-profiles"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/http-c2-profiles/{name}"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/http-c2-profiles"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/traffic-encoders"
   },
   {
     "method": "GET",

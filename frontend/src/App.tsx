@@ -3,7 +3,9 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ConnectionProvider, useConnection } from './lib/connection'
+import { AuthProvider, useAuth } from './lib/auth'
 import { GROUPED_NAV, ICONS } from './lib/nav'
+import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import SessionsPage from './pages/SessionsPage'
 import SessionDetailPage from './pages/SessionDetailPage'
@@ -12,6 +14,7 @@ import ListenersPage from './pages/ListenersPage'
 import BeaconsPage from './pages/BeaconsPage'
 import BeaconDetailPage from './pages/BeaconDetailPage'
 import ImplantsPage from './pages/ImplantsPage'
+import HttpC2Page from './pages/HttpC2Page'
 import SocksPage from './pages/SocksPage'
 import JobsPage from './pages/JobsPage'
 import TasksPage from './pages/TasksPage'
@@ -28,19 +31,49 @@ import SettingsPage from './pages/SettingsPage'
 import Logo from './components/Logo'
 import { ToastProvider } from './components/common/Toast'
 import './App.css'
+import './pages/login.css'
 
 export default function App() {
   return (
     <ToastProvider>
-      <ConnectionProvider>
-        <AppLayout />
-      </ConnectionProvider>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
     </ToastProvider>
+  )
+}
+
+function AuthGate() {
+  const { ready, enabled, authenticated } = useAuth()
+  const { t } = useTranslation()
+  if (!ready) {
+    return (
+      <div className="login-page">
+        <div className="login-card">
+          <div className="login-brand">
+            <Logo />
+            <div>
+              <h1>{t('app.title')}</h1>
+              <p>{t('app.connecting')}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if (enabled && !authenticated) {
+    return <LoginPage />
+  }
+  return (
+    <ConnectionProvider>
+      <AppLayout />
+    </ConnectionProvider>
   )
 }
 
 function AppLayout() {
   const { connected, version, counts, ready } = useConnection()
+  const { enabled, user, logout } = useAuth()
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
@@ -208,6 +241,18 @@ function AppLayout() {
                   : t('app.notConnected')}
             </span>
           </div>
+          {enabled && (
+            <button
+              type="button"
+              className="lang-switch"
+              onClick={() => void logout()}
+              title={user ? t('login.signedInAs', { user }) : t('login.signOut')}
+              aria-label={t('login.signOut')}
+            >
+              {ICONS.settings}
+              <span>{t('login.signOut')}</span>
+            </button>
+          )}
           <button type="button" className="lang-switch" onClick={toggleLang} title={t('app.language')} aria-label={t('app.language')}>
             {ICONS.globe}
             <span>{lang === 'zh' ? 'EN' : '中'}</span>
@@ -259,6 +304,7 @@ function AppLayout() {
               <Route path="/beacons/:id" element={<BeaconDetailPage />} />
               <Route path="/listeners" element={<ListenersPage />} />
               <Route path="/implants" element={<ImplantsPage />} />
+              <Route path="/http-c2" element={<HttpC2Page />} />
               <Route path="/socks" element={<SocksPage />} />
               <Route path="/jobs" element={<JobsPage />} />
               <Route path="/tasks" element={<TasksPage />} />

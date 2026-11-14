@@ -150,8 +150,21 @@ func (c *Client) Jobs() ([]JobView, error) {
 	return out, nil
 }
 
+// ListenerStartOptions carries optional camouflage fields for HTTP(S) listeners.
+type ListenerStartOptions struct {
+	Domain          string
+	Website         string
+	ACME            bool
+	EnforceOTP      bool
+	LongPollTimeout int64
+	LongPollJitter  int64
+}
+
 // StartListener starts a new listener (mTLS, HTTP(S), DNS, WireGuard).
-func (c *Client) StartListener(jobType, addr string, port uint32, tls bool) (uint32, error) {
+func (c *Client) StartListener(jobType, addr string, port uint32, tls bool, opts *ListenerStartOptions) (uint32, error) {
+	if opts == nil {
+		opts = &ListenerStartOptions{}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	switch jobType {
@@ -166,8 +179,14 @@ func (c *Client) StartListener(jobType, addr string, port uint32, tls bool) (uin
 		return resp.JobID, nil
 	case "http", "https":
 		req := &clientpb.HTTPListenerReq{
-			Host: addr,
-			Port: port,
+			Host:            addr,
+			Port:            port,
+			Domain:          opts.Domain,
+			Website:         opts.Website,
+			ACME:            opts.ACME,
+			EnforceOTP:      opts.EnforceOTP,
+			LongPollTimeout: opts.LongPollTimeout,
+			LongPollJitter:  opts.LongPollJitter,
 		}
 		if jobType == "https" || tls {
 			req.Secure = true
@@ -178,8 +197,12 @@ func (c *Client) StartListener(jobType, addr string, port uint32, tls bool) (uin
 		}
 		return resp.JobID, nil
 	case "dns":
+		domains := []string{addr}
+		if opts.Domain != "" {
+			domains = []string{opts.Domain}
+		}
 		resp, err := c.RPC.StartDNSListener(ctx, &clientpb.DNSListenerReq{
-			Domains: []string{addr},
+			Domains: domains,
 		})
 		if err != nil {
 			return 0, err

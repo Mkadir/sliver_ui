@@ -54,6 +54,31 @@ Everything ships as a **single static binary** — the built frontend is embedde
 | **Implants** — payload generation with auto-detected C2 listeners | **Terminal** — full-screen xterm.js shell per session |
 | ![Implants](Implants.png) | ![Terminal](Terminal.png) |
 
+## Quick install (server)
+
+On a host that already has `sliver-client` (and ideally `sliver.service`):
+
+```bash
+git clone https://github.com/9Insomnie/sliver_ui.git
+cd sliver_ui
+bash install.sh
+```
+
+The installer will:
+
+- install the `sliver-ui` binary (local build, existing binary, or GitHub release)
+- mirror `~/.sliver-client/configs/*.cfg` → `*.json` (UI profile list)
+- auto-pick a localhost operator profile when present
+- write UI login credentials to `~/.config/sliver-ui/env`
+- enable `sliver-ui.service` and attach it to `sliver.service` (`Wants=`)
+
+```bash
+bash install.sh --help
+bash install.sh --addr 0.0.0.0:8080 --profile cup_127.0.0.1 --user admin --pass 'change-me'
+bash install.sh --build          # force make build from this tree
+bash install.sh --no-auth        # disable UI login
+```
+
 ## Running the app
 
 - **Windows** — starts in a native **WebView2 desktop window** (1440×900). Use `--no-window` to run as a plain HTTP server instead.

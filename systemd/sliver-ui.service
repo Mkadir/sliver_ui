@@ -1,0 +1,19 @@
+[Unit]
+Description=Sliver UI (web console)
+Documentation=https://github.com/9Insomnie/sliver_ui
+After=network-online.target sliver.service
+Wants=network-online.target sliver.service
+
+[Service]
+Type=simple
+User=cup
+Group=cup
+WorkingDirectory=/home/cup/.local/share/sliver-ui
+EnvironmentFile=-/home/cup/.config/sliver-ui/env
+ExecStartPre=/bin/bash -c 'for i in $(seq 1 30); do ss -ltn 2>/dev/null | grep -q ":31337 " && exit 0; sleep 1; done; exit 0'
+ExecStart=/home/cup/.local/share/sliver-ui/bin/sliver-ui --no-window --no-browser --addr 127.0.0.1:8080 --profile cup_127.0.0.1
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

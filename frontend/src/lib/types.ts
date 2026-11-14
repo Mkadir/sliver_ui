@@ -90,6 +90,28 @@ export interface ImplantConfig {
   obfuscate: boolean
   limitDomainJoined: boolean
   transport: string
+  http_c2_profile?: string
+  traffic_encoders_enabled?: boolean
+  traffic_encoders?: string[]
+  limit_hostname?: string
+  limit_username?: string
+  limit_datetime?: string
+  limit_file_exists?: string
+  limit_locale?: string
+  connection_strategy?: string
+}
+
+export interface HTTPC2Profile {
+  name: string
+  created?: number
+  server_config?: Record<string, unknown>
+  implant_config?: Record<string, unknown>
+  raw?: unknown
+}
+
+export interface TrafficEncoder {
+  name: string
+  id: number
 }
 
 export interface ImplantBuild {
@@ -373,6 +395,10 @@ export interface ImplantProfile {
 }
 
 export interface ImplantConfigView {
+  HTTPC2ConfigName?: string
+  TrafficEncodersEnabled?: boolean
+  LimitDomainJoined?: boolean
+
   Name: string
   OS: string
   Arch: string

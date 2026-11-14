@@ -30,24 +30,39 @@ type GenerateRequest struct {
 	Debug     bool  `json:"debug"`
 	Evasion   bool  `json:"evasion"`
 	Obfuscate bool  `json:"obfuscate"`
+
+	// OPSEC / camouflage
+	HTTPC2Profile          string   `json:"http_c2_profile"`
+	TrafficEncodersEnabled bool     `json:"traffic_encoders_enabled"`
+	TrafficEncoders        []string `json:"traffic_encoders"`
+	LimitDomainJoined      bool     `json:"limitDomainJoined"`
+	LimitHostname          string   `json:"limit_hostname"`
+	LimitUsername          string   `json:"limit_username"`
+	LimitDatetime          string   `json:"limit_datetime"`
+	LimitFileExists        string   `json:"limit_file_exists"`
+	LimitLocale            string   `json:"limit_locale"`
+	ConnectionStrategy     string   `json:"connection_strategy"`
 }
 
 // ImplantConfigView mirrors the relevant fields of clientpb.ImplantConfig.
 type ImplantConfigView struct {
-	Name        string `json:"Name"`
-	OS          string `json:"OS"`
-	Arch        string `json:"Arch"`
-	Format      string `json:"Format"`
-	Interval    int64  `json:"Interval"`
-	Jitter      int64  `json:"Jitter"`
-	Obfuscate   bool   `json:"Obfuscate"`
-	Debug       bool   `json:"Debug"`
-	Evasion     bool   `json:"Evasion"`
-	MaxErrors   uint32 `json:"MaxConnectionErrors"`
-	IsBeacon    bool   `json:"IsBeacon"`
-	BeaconInt   int64  `json:"BeaconInterval"`
-	BeaconJit   int64  `json:"BeaconJitter"`
-	C2          []struct {
+	Name                   string `json:"Name"`
+	OS                     string `json:"OS"`
+	Arch                   string `json:"Arch"`
+	Format                 string `json:"Format"`
+	Interval               int64  `json:"Interval"`
+	Jitter                 int64  `json:"Jitter"`
+	Obfuscate              bool   `json:"Obfuscate"`
+	Debug                  bool   `json:"Debug"`
+	Evasion                bool   `json:"Evasion"`
+	MaxErrors              uint32 `json:"MaxConnectionErrors"`
+	IsBeacon               bool   `json:"IsBeacon"`
+	BeaconInt              int64  `json:"BeaconInterval"`
+	BeaconJit              int64  `json:"BeaconJitter"`
+	HTTPC2Profile          string `json:"HTTPC2ConfigName"`
+	TrafficEncodersEnabled bool   `json:"TrafficEncodersEnabled"`
+	LimitDomainJoined      bool   `json:"LimitDomainJoined"`
+	C2                     []struct {
 		URL string `json:"URL"`
 	} `json:"C2"`
 }
@@ -77,20 +92,23 @@ func configToView(c *clientpb.ImplantConfig, name string) *ImplantConfigView {
 		}{URL: u.URL})
 	}
 	return &ImplantConfigView{
-		Name:        name,
-		OS:          c.GOOS,
-		Arch:        c.GOARCH,
-		Format:      c.Format.String(),
-		Interval:    c.BeaconInterval,
-		Jitter:      c.BeaconJitter,
-		Obfuscate:   c.ObfuscateSymbols,
-		Debug:       c.Debug,
-		Evasion:     c.Evasion,
-		MaxErrors:   c.MaxConnectionErrors,
-		IsBeacon:    c.IsBeacon,
-		BeaconInt:   c.BeaconInterval,
-		BeaconJit:   c.BeaconJitter,
-		C2:          c2,
+		Name:                   name,
+		OS:                     c.GOOS,
+		Arch:                   c.GOARCH,
+		Format:                 c.Format.String(),
+		Interval:               c.BeaconInterval,
+		Jitter:                 c.BeaconJitter,
+		Obfuscate:              c.ObfuscateSymbols,
+		Debug:                  c.Debug,
+		Evasion:                c.Evasion,
+		MaxErrors:              c.MaxConnectionErrors,
+		IsBeacon:               c.IsBeacon,
+		BeaconInt:              c.BeaconInterval,
+		BeaconJit:              c.BeaconJitter,
+		HTTPC2Profile:          c.HTTPC2ConfigName,
+		TrafficEncodersEnabled: c.TrafficEncodersEnabled,
+		LimitDomainJoined:      c.LimitDomainJoined,
+		C2:                     c2,
 	}
 }
 
@@ -226,18 +244,35 @@ func buildImplantConfig(req *GenerateRequest, isBeacon bool) *clientpb.ImplantCo
 		format = clientpb.OutputFormat_SHARED_LIB
 	}
 
+	httpProfile := strings.TrimSpace(req.HTTPC2Profile)
+	if httpProfile == "" {
+		httpProfile = "default"
+	}
+	strategy := strings.TrimSpace(req.ConnectionStrategy)
+	if strategy == "" {
+		strategy = "sequential"
+	}
+
 	cfg := &clientpb.ImplantConfig{
-		GOOS:               req.OS,
-		GOARCH:             req.Arch,
-		Format:             format,
-		Debug:              req.Debug,
-		Evasion:            req.Evasion,
-		ObfuscateSymbols:   req.Obfuscate,
-		IsBeacon:           isBeacon,
-		BeaconInterval:     req.Interval,
-		BeaconJitter:       req.Jitter,
-		HTTPC2ConfigName:   "default",
-		ConnectionStrategy: "sequential",
+		GOOS:                   req.OS,
+		GOARCH:                 req.Arch,
+		Format:                 format,
+		Debug:                  req.Debug,
+		Evasion:                req.Evasion,
+		ObfuscateSymbols:       req.Obfuscate,
+		IsBeacon:               isBeacon,
+		BeaconInterval:         req.Interval,
+		BeaconJitter:           req.Jitter,
+		HTTPC2ConfigName:       httpProfile,
+		ConnectionStrategy:     strategy,
+		TrafficEncodersEnabled: req.TrafficEncodersEnabled,
+		TrafficEncoders:        req.TrafficEncoders,
+		LimitDomainJoined:      req.LimitDomainJoined,
+		LimitHostname:          req.LimitHostname,
+		LimitUsername:          req.LimitUsername,
+		LimitDatetime:          req.LimitDatetime,
+		LimitFileExists:        req.LimitFileExists,
+		LimitLocale:            req.LimitLocale,
 	}
 	if isBeacon {
 		cfg.BeaconInterval = req.Interval

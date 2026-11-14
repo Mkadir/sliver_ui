@@ -18,11 +18,12 @@ import (
 type Server struct {
 	mu     sync.RWMutex
 	client *sliver.Client
+	auth   *AuthGate
 }
 
 // New creates an API server.
 func New() *Server {
-	return &Server{}
+	return &Server{auth: NewAuthGateFromEnv()}
 }
 
 func (s *Server) Client() *sliver.Client {
@@ -88,6 +89,10 @@ type RoutePattern struct {
 // registers them and RoutePatterns() exports them, so the two cannot drift.
 func (s *Server) apiRoutes() []route {
 	return []route{
+		{"POST", "/api/auth/login", s.auth.handleLogin},
+		{"POST", "/api/auth/logout", s.auth.handleLogout},
+		{"GET", "/api/auth/me", s.auth.handleMe},
+
 		{"GET", "/api/info", s.handleInfo},
 		{"GET", "/api/overview", s.handleOverview},
 		{"POST", "/api/connect", s.handleConnect},
@@ -203,6 +208,11 @@ func (s *Server) apiRoutes() []route {
 		{"DELETE", "/api/websites/{name}", s.handleWebsiteRemove},
 		{"GET", "/api/canaries", s.handleCanaries},
 
+		{"GET", "/api/http-c2-profiles", s.handleListHTTPC2Profiles},
+		{"GET", "/api/http-c2-profiles/{name}", s.handleGetHTTPC2Profile},
+		{"POST", "/api/http-c2-profiles", s.handleSaveHTTPC2Profile},
+		{"GET", "/api/traffic-encoders", s.handleListTrafficEncoders},
+
 		{"GET", "/api/wg/config", s.handleWGClientConfig},
 		{"GET", "/api/wg/ip", s.handleWGUniqueIP},
 		{"GET", "/api/sessions/{id}/wg/forwarders", s.handleWGForwarders},
@@ -247,7 +257,7 @@ func (s *Server) Routes() http.Handler {
 	})
 	mux.HandleFunc("/", handleStatic)
 
-	return withCORS(withLogging(mux))
+	return withCORS(withLogging(s.auth.Middleware(mux)))
 }
 
 // RoutePatterns returns the full HTTP contract (method + path pattern) of the
@@ -550,10 +560,16 @@ func (s *Server) handleListeners(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Type string `json:"type"`
-		Addr string `json:"addr"`
-		Port int    `json:"port"`
-		TLS  bool   `json:"tls"`
+		Type            string `json:"type"`
+		Addr            string `json:"addr"`
+		Port            int    `json:"port"`
+		TLS             bool   `json:"tls"`
+		Domain          string `json:"domain"`
+		Website         string `json:"website"`
+		ACME            bool   `json:"acme"`
+		EnforceOTP      bool   `json:"enforce_otp"`
+		LongPollTimeout int64  `json:"long_poll_timeout"`
+		LongPollJitter  int64  `json:"long_poll_jitter"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
@@ -576,7 +592,14 @@ func (s *Server) handleListeners(w http.ResponseWriter, r *http.Request) {
 			port = 80
 		}
 	}
-	jobID, err := c.StartListener(req.Type, addr, port, req.TLS)
+	jobID, err := c.StartListener(req.Type, addr, port, req.TLS, &sliver.ListenerStartOptions{
+		Domain:          req.Domain,
+		Website:         req.Website,
+		ACME:            req.ACME,
+		EnforceOTP:      req.EnforceOTP,
+		LongPollTimeout: req.LongPollTimeout,
+		LongPollJitter:  req.LongPollJitter,
+	})
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

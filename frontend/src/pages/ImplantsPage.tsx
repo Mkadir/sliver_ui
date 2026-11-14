@@ -43,18 +43,28 @@ export default function ImplantsPage() {
   const [generating, setGenerating] = useState(false)
   const [profileName, setProfileName] = useState('')
 
-  const [name, setName] = useState('my-implant')
+  const [name, setName] = useState('OneDriveUpdater')
   const [os, setOs] = useState('windows')
   const [arch, setArch] = useState('amd64')
   const [format, setFormat] = useState('exe')
-  const [c2Type, setC2Type] = useState('mtls')
+  const [c2Type, setC2Type] = useState('https')
   const [c2Host, setC2Host] = useState('127.0.0.1')
-  const [c2Port, setC2Port] = useState('8888')
+  const [c2Port, setC2Port] = useState('443')
   const [reconInterval, setReconInterval] = useState('60')
   const [jitter, setJitter] = useState('20')
   const [obfuscate, setObfuscate] = useState(true)
   const [debug, setDebug] = useState(false)
   const [evasion, setEvasion] = useState(false)
+  const [httpC2Profile, setHttpC2Profile] = useState('default')
+  const [httpC2Profiles, setHttpC2Profiles] = useState<string[]>(['default'])
+  const [trafficEncodersEnabled, setTrafficEncodersEnabled] = useState(false)
+  const [trafficEncoders, setTrafficEncoders] = useState<string[]>([])
+  const [selectedEncoders, setSelectedEncoders] = useState<string[]>([])
+  const [limitDomainJoined, setLimitDomainJoined] = useState(false)
+  const [limitHostname, setLimitHostname] = useState('')
+  const [limitUsername, setLimitUsername] = useState('')
+  const [serviceNameHint, setServiceNameHint] = useState('OneDrive Updator Service')
+  const [serviceDescHint, setServiceDescHint] = useState('Provides update support for Microsoft OneDrive.')
   const [deleting, setDeleting] = useState<{ kind: 'build' | 'profile'; name: string } | null>(null)
   const [busy, setBusy] = useState(false)
   const [compiler, setCompiler] = useState<CompilerInfo | null>(null)
@@ -109,11 +119,25 @@ export default function ImplantsPage() {
     }
   }
 
+  const loadOpsecOptions = async () => {
+    try {
+      const [profiles, encoders] = await Promise.all([api.httpC2Profiles(), api.trafficEncoders()])
+      const names = (profiles.profiles || []).map((p) => p.name).filter(Boolean)
+      setHttpC2Profiles(names.length ? names : ['default'])
+      if (names.length && !names.includes(httpC2Profile)) setHttpC2Profile(names[0])
+      setTrafficEncoders((encoders.encoders || []).map((e) => e.name))
+    } catch {
+      setHttpC2Profiles(['default'])
+      setTrafficEncoders([])
+    }
+  }
+
   useEffect(() => {
     load()
     loadProfiles()
     loadCompiler()
     loadDetect()
+    loadOpsecOptions()
     const t = setInterval(load, 3000)
     const td = setInterval(loadDetect, 5000)
     return () => {
@@ -173,7 +197,12 @@ export default function ImplantsPage() {
     evasion,
     obfuscate,
     maxConnectionErrors: 1000,
-    limitDomainJoined: false,
+    limitDomainJoined,
+    http_c2_profile: httpC2Profile || 'default',
+    traffic_encoders_enabled: trafficEncodersEnabled,
+    traffic_encoders: trafficEncodersEnabled ? selectedEncoders : [],
+    limit_hostname: limitHostname || undefined,
+    limit_username: limitUsername || undefined,
   })
 
   const saveProfile = async () => {
@@ -223,6 +252,9 @@ export default function ImplantsPage() {
     if (cfg.Obfuscate !== undefined) setObfuscate(cfg.Obfuscate)
     if (cfg.Debug !== undefined) setDebug(cfg.Debug)
     if (cfg.Evasion !== undefined) setEvasion(cfg.Evasion)
+    if (cfg.HTTPC2ConfigName) setHttpC2Profile(cfg.HTTPC2ConfigName)
+    if (cfg.TrafficEncodersEnabled !== undefined) setTrafficEncodersEnabled(cfg.TrafficEncodersEnabled)
+    if (cfg.LimitDomainJoined !== undefined) setLimitDomainJoined(cfg.LimitDomainJoined)
     setMessage(t('profiles.loaded', { name: p.Name }))
   }
 
@@ -346,10 +378,13 @@ export default function ImplantsPage() {
 
       <div className="card">
         <div className="card-title">{t('implants.genTitle')}</div>
+        <div className="form-hint" style={{ marginBottom: 10 }}>
+          {t('implants.opsecHint')}
+        </div>
         <div className="form-grid">
           <div className="field">
             <label>{t('implants.name')}</label>
-            <input value={name} onChange={(e) => setName(e.target.value)} />
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="OneDriveUpdater" />
           </div>
           <div className="field">
             <label>{t('implants.os')}</label>
@@ -434,12 +469,93 @@ export default function ImplantsPage() {
               {t('implants.evasion')}
             </label>
           </div>
+          {(c2Type === 'http' || c2Type === 'https') && (
+            <div className="field">
+              <label>{t('implants.httpC2Profile')}</label>
+              <select value={httpC2Profile} onChange={(e) => setHttpC2Profile(e.target.value)}>
+                {httpC2Profiles.map((p) => (
+                  <option key={p} value={p}>
+                    {p}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={trafficEncodersEnabled}
+                onChange={(e) => setTrafficEncodersEnabled(e.target.checked)}
+              />
+              {t('implants.trafficEncoders')}
+            </label>
+          </div>
+          {trafficEncodersEnabled && trafficEncoders.length > 0 && (
+            <div className="field">
+              <label>{t('implants.trafficEncoderList')}</label>
+              <select
+                multiple
+                value={selectedEncoders}
+                onChange={(e) =>
+                  setSelectedEncoders(Array.from(e.target.selectedOptions).map((o) => o.value))
+                }
+                style={{ minHeight: 72 }}
+              >
+                {trafficEncoders.map((enc) => (
+                  <option key={enc} value={enc}>
+                    {enc}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+          <div className="field">
+            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="checkbox"
+                checked={limitDomainJoined}
+                onChange={(e) => setLimitDomainJoined(e.target.checked)}
+              />
+              {t('implants.limitDomainJoined')}
+            </label>
+          </div>
+          <div className="field">
+            <label>{t('implants.limitHostname')}</label>
+            <input
+              value={limitHostname}
+              onChange={(e) => setLimitHostname(e.target.value)}
+              placeholder="DESKTOP-*"
+            />
+          </div>
+          <div className="field">
+            <label>{t('implants.limitUsername')}</label>
+            <input value={limitUsername} onChange={(e) => setLimitUsername(e.target.value)} />
+          </div>
           <div className="field" style={{ justifyContent: 'flex-end' }}>
             <button type="button" className="btn primary" onClick={generate} disabled={generating}>
               {generating ? t('implants.generating') : t('implants.generate')}
             </button>
           </div>
         </div>
+        {format === 'service' && (
+          <div className="form-hint" style={{ marginTop: 10 }}>
+            <strong>{t('implants.serviceHintTitle')}</strong> {t('implants.serviceHintBody')}
+            <div className="form-grid" style={{ marginTop: 8 }}>
+              <div className="field">
+                <label>{t('implants.serviceName')}</label>
+                <input value={serviceNameHint} onChange={(e) => setServiceNameHint(e.target.value)} />
+              </div>
+              <div className="field">
+                <label>{t('implants.serviceDesc')}</label>
+                <input value={serviceDescHint} onChange={(e) => setServiceDescHint(e.target.value)} />
+              </div>
+            </div>
+            <div style={{ marginTop: 6, color: 'var(--text-mute)', fontSize: 'var(--fs-sm)' }}>
+              {t('implants.serviceHintNote', { name: serviceNameHint, desc: serviceDescHint })}
+            </div>
+          </div>
+        )}
         {detectedC2.host && detectedC2.anyPort && (
           <div
             className="form-hint"

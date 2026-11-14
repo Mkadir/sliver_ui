@@ -6,6 +6,8 @@ import type {
   ImplantConfig,
   GenerateResult,
   Job,
+  HTTPC2Profile,
+  TrafficEncoder,
   DirView,
   NetInterface,
   ProcessInfo,
@@ -37,10 +39,17 @@ import type {
 
 const BASE = '/api'
 
+export type AuthMe = {
+  enabled: boolean
+  authenticated: boolean
+  user: string
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     cache: 'no-store',
+    credentials: 'include',
     ...options,
   })
   const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
@@ -50,6 +59,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  authMe: () => request<AuthMe>('/auth/me'),
+  login: (username: string, password: string) =>
+    request<{ success: boolean; user?: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => request<{ success: boolean }>('/auth/logout', { method: 'POST' }),
+
   info: () => request<ServerInfo>('/info'),
 
   overview: () => request<OverviewData>('/overview'),
@@ -90,8 +107,28 @@ export const api = {
   generate: (config: Partial<ImplantConfig>) =>
     request<GenerateResult>(`/generate`, { method: 'POST', body: JSON.stringify(config) }),
 
-  startListener: (job: { type: string; addr: string; port: number; tls: boolean }) =>
-    request<{ success: boolean }>('/listeners', { method: 'POST', body: JSON.stringify(job) }),
+  startListener: (job: {
+    type: string
+    addr: string
+    port: number
+    tls: boolean
+    domain?: string
+    website?: string
+    acme?: boolean
+    enforce_otp?: boolean
+    long_poll_timeout?: number
+    long_poll_jitter?: number
+  }) => request<{ success: boolean }>('/listeners', { method: 'POST', body: JSON.stringify(job) }),
+
+  httpC2Profiles: () => request<{ profiles: HTTPC2Profile[] }>('/http-c2-profiles'),
+  httpC2Profile: (name: string) =>
+    request<HTTPC2Profile>(`/http-c2-profiles/${encodeURIComponent(name)}`),
+  saveHttpC2Profile: (config: unknown, overwrite = true) =>
+    request<{ success: boolean }>('/http-c2-profiles', {
+      method: 'POST',
+      body: JSON.stringify({ overwrite, config }),
+    }),
+  trafficEncoders: () => request<{ encoders: TrafficEncoder[] }>('/traffic-encoders'),
 
   stopListener: (jobId: number) =>
     request<{ success: boolean }>(`/listeners/${jobId}`, { method: 'DELETE' }),

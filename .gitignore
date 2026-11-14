@@ -172,3 +172,6 @@ backend/web/dist/*
 *.lz
 *.lzma
 *.iso
+
+# Local build binary
+/sliver-ui

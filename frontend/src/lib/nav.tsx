@@ -146,6 +146,13 @@ export const ICONS: Record<string, ReactNode> = {
       <path d="M12 13l-2 2 2 2M15 13l2 2-2 2" />
     </svg>
   ),
+  httpc2: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+      <path d="M8 8h8M8 16h5" />
+    </svg>
+  ),
   caret: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m6 9 6 6 6-6" />
@@ -194,6 +201,7 @@ export const GROUPED_NAV: NavSection[] = [
     key: 'payloads',
     items: [
       { path: '/implants', key: 'implants', icon: ICONS.implants },
+      { path: '/http-c2', key: 'httpc2', icon: ICONS.httpc2 },
       { path: '/socks', key: 'socks', icon: ICONS.socks },
     ],
   },
