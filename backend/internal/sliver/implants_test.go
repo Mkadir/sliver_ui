@@ -20,6 +20,19 @@ func TestBuildC2URL_WithScheme(t *testing.T) {
 	}
 }
 
+func TestNormalizeCanaryDomains(t *testing.T) {
+	got := normalizeCanaryDomains([]string{" Example.COM.", "dns://foo.net", "example.com", " bar.org,baz.org "})
+	want := []string{"example.com", "foo.net", "bar.org", "baz.org"}
+	if len(got) != len(want) {
+		t.Fatalf("got %v want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("got %v want %v", got, want)
+		}
+	}
+}
+
 func TestBuildC2URL_WithoutScheme(t *testing.T) {
 	cases := []struct {
 		addr     string

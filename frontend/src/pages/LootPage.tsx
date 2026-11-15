@@ -121,6 +121,21 @@ export default function LootPage() {
     }
   }
 
+  const downloadReport = async (kind: 'json' | 'md') => {
+    try {
+      if (kind === 'json') {
+        const report = await api.lootReport()
+        triggerDownload('loot-report.json', new TextEncoder().encode(JSON.stringify(report, null, 2)))
+      } else {
+        const md = await api.lootReportMarkdown()
+        triggerDownload('loot-report.md', new TextEncoder().encode(md))
+      }
+      toast.push('success', t('loot.reportDownloaded'))
+    } catch (e) {
+      toast.push('error', t('loot.reportFailed', { msg: (e as Error).message }))
+    }
+  }
+
   const remove = async (entry: LootEntry) => {
     setBusy(true)
     try {
@@ -236,6 +251,7 @@ export default function LootPage() {
         <div>
           <div className="page-title">{t('loot.title')}</div>
           <div className="page-sub">{t('loot.sub', { count: loot.length })}</div>
+          <div className="form-hint">{t('loot.reportHint')}</div>
         </div>
         <div className="toolbar">
           <div className="seg">
@@ -250,6 +266,12 @@ export default function LootPage() {
           </button>
           <button type="button" className="btn" onClick={load}>
             {t('common.refresh')}
+          </button>
+          <button type="button" className="btn" onClick={() => void downloadReport('json')}>
+            {t('loot.reportJson')}
+          </button>
+          <button type="button" className="btn" onClick={() => void downloadReport('md')}>
+            {t('loot.reportMd')}
           </button>
         </div>
       </div>

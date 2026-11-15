@@ -225,6 +225,22 @@
   },
   {
     "method": "POST",
+    "pattern": "/api/stage/generate"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/stage-listeners"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/stage-listeners"
+  },
+  {
+    "method": "DELETE",
+    "pattern": "/api/stage-listeners/{id}"
+  },
+  {
+    "method": "POST",
     "pattern": "/api/sessions/{id}/backdoor"
   },
   {
@@ -234,6 +250,18 @@
   {
     "method": "POST",
     "pattern": "/api/shellcode/rdi"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/shellcode/encoders"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/shellcode/encode"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/loaders/build"
   },
   {
     "method": "POST",
@@ -246,6 +274,94 @@
   {
     "method": "POST",
     "pattern": "/api/sessions/{id}/ping"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/sessions/{id}/wasm"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/sessions/{id}/wasm"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/sessions/{id}/wasm/exec"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/beacons/{id}/wasm"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/beacons/{id}/wasm"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/beacons/{id}/wasm/exec"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/sessions/{id}/rportfwd"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/sessions/{id}/rportfwd"
+  },
+  {
+    "method": "DELETE",
+    "pattern": "/api/sessions/{id}/rportfwd/{listenerID}"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/operator/notes"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/operator/notes/{uuid}"
+  },
+  {
+    "method": "PUT",
+    "pattern": "/api/operator/notes/{uuid}"
+  },
+  {
+    "method": "DELETE",
+    "pattern": "/api/operator/notes/{uuid}"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/operator/locks"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/operator/locks/{sessionID}"
+  },
+  {
+    "method": "PUT",
+    "pattern": "/api/operator/locks/{sessionID}"
+  },
+  {
+    "method": "DELETE",
+    "pattern": "/api/operator/locks/{sessionID}"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/operator/reactions"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/operator/reactions"
+  },
+  {
+    "method": "DELETE",
+    "pattern": "/api/operator/reactions/{id}"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/operator/reaction-log"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/operator/audit"
   },
   {
     "method": "GET",
@@ -274,6 +390,10 @@
   {
     "method": "POST",
     "pattern": "/api/sessions/{id}/reconfigure"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/beacons/{id}/reconfigure"
   },
   {
     "method": "POST",
@@ -350,6 +470,26 @@
   {
     "method": "GET",
     "pattern": "/api/beacons/{id}/tasks/{taskID}"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/beacons/{id}/tasks/{taskID}/cancel"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/beacons/{id}/exec"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/beacons/{id}/ps"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/beacons/{id}/fs"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/beacons/{id}/screenshot"
   },
   {
     "method": "POST",
@@ -444,6 +584,14 @@
     "pattern": "/api/traffic-encoders"
   },
   {
+    "method": "POST",
+    "pattern": "/api/traffic-encoders"
+  },
+  {
+    "method": "DELETE",
+    "pattern": "/api/traffic-encoders/{name}"
+  },
+  {
     "method": "GET",
     "pattern": "/api/wg/config"
   },
@@ -492,6 +640,10 @@
     "pattern": "/api/loot"
   },
   {
+    "method": "GET",
+    "pattern": "/api/loot/report"
+  },
+  {
     "method": "POST",
     "pattern": "/api/loot"
   },
@@ -520,8 +672,24 @@
     "pattern": "/api/builders"
   },
   {
+    "method": "GET",
+    "pattern": "/api/external-builders"
+  },
+  {
+    "method": "GET",
+    "pattern": "/api/armory"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/armory/install"
+  },
+  {
     "method": "POST",
     "pattern": "/api/generate"
+  },
+  {
+    "method": "POST",
+    "pattern": "/api/implant-builds/{name}/spoof-metadata"
   },
   {
     "method": "POST",
@@ -534,5 +702,9 @@
   {
     "method": "GET",
     "pattern": "/ws/sessions/{id}/terminal"
+  },
+  {
+    "method": "GET",
+    "pattern": "/ws/events"
   }
 ]

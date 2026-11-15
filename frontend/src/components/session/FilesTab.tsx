@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../lib/api'
 import { base64ToBytes, bytesToText, triggerDownload } from '../../lib/binary'
+import { clearFileRecents, loadFileRecents, rememberFileRecent } from '../../lib/filesRecents'
 import { joinPath, parentOf } from '../../lib/paths'
 import type { DirView } from '../../lib/types'
 import ConfirmDialog from '../common/ConfirmDialog'
@@ -22,11 +23,14 @@ function fmtTime(ms: number): string {
 export default function FilesTab({
   sessionId,
   os,
+  hostKey,
 }: {
   sessionId: string
   os?: string
+  hostKey?: string
 }) {
   const { t } = useTranslation()
+  const recentsKey = hostKey || sessionId
   const [dir, setDir] = useState<DirView | null>(null)
   const [path, setPath] = useState('')
   const [error, setError] = useState('')
@@ -36,6 +40,8 @@ export default function FilesTab({
   const [confirmDelete, setConfirmDelete] = useState<{ name: string; isDir: boolean } | null>(null)
   const [recursive, setRecursive] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [lootBusy, setLootBusy] = useState('')
+  const [recents, setRecents] = useState(() => loadFileRecents(recentsKey))
   const uploadRef = useRef<HTMLInputElement>(null)
 
   const load = useCallback(
@@ -46,19 +52,26 @@ export default function FilesTab({
         const d = await api.fsList(sessionId, p || undefined)
         setDir(d)
         setPath(d.Path)
+        if (d.Path) setRecents(rememberFileRecent(recentsKey, d.Path))
       } catch (e) {
         setError((e as Error).message)
       } finally {
         setLoading(false)
       }
     },
-    [sessionId],
+    [sessionId, recentsKey],
   )
+
+  useEffect(() => {
+    setRecents(loadFileRecents(recentsKey))
+  }, [recentsKey])
 
   useEffect(() => {
     load(path)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId])
+
+  const sep = os === 'windows' ? '\\' : '/'
 
   const enter = (name: string) => {
     setViewing(null)
@@ -71,7 +84,18 @@ export default function FilesTab({
     load(parentOf(path, sep))
   }
 
-  const sep = os === 'windows' ? '\\' : '/'
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const el = e.target
+      if (el instanceof Element && el.closest('input, textarea, select')) return
+      if (e.key === 'Backspace') {
+        e.preventDefault()
+        up()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [path, load, os])
 
   const refresh = () => load(path)
 
@@ -123,6 +147,27 @@ export default function FilesTab({
       triggerDownload(res.Name || name, bytes)
     } catch (e) {
       setError((e as Error).message)
+    }
+  }
+
+  const saveLoot = async (name: string) => {
+    setLootBusy(name)
+    setError('')
+    try {
+      const res = await api.fsDownload(sessionId, joinPath(path, name, sep))
+      const lootName = res.Name || name
+      await api.lootAdd({
+        type: 'file',
+        name: lootName,
+        file_name: lootName,
+        file_type: 'binary',
+        file_data_b64: res.Data,
+      })
+      setMessage(t('files.lootSaved', { name: lootName }))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLootBusy('')
     }
   }
 
@@ -180,6 +225,35 @@ export default function FilesTab({
           </button>
           <input ref={uploadRef} type="file" hidden onChange={onUpload} />
         </div>
+        <div className="fs-recents">
+          <span className="fs-recents-label">{t('files.recents')}</span>
+          {recents.length === 0 ? (
+            <span className="muted">{t('files.recentsEmpty')}</span>
+          ) : (
+            recents.map((r) => (
+              <button
+                type="button"
+                key={r.path}
+                className="btn sm fs-recent-chip"
+                title={r.path}
+                onClick={() => load(r.path)}
+              >
+                {r.path}
+              </button>
+            ))
+          )}
+          <button
+            type="button"
+            className="btn sm"
+            onClick={() => {
+              clearFileRecents(recentsKey)
+              setRecents([])
+            }}
+          >
+            {t('files.recentsClear')}
+          </button>
+          <span className="form-hint">{t('files.recentsHint')}</span>
+        </div>
         {error && <div className="error-banner">{error}</div>}
         {message && (
           <div
@@ -236,6 +310,16 @@ export default function FilesTab({
                     {!f.IsDir && (
                       <button type="button" className="btn sm" onClick={() => download(f.Name, false)}>
                         {t('files.download')}
+                      </button>
+                    )}
+                    {!f.IsDir && (
+                      <button
+                        type="button"
+                        className="btn sm"
+                        disabled={lootBusy === f.Name}
+                        onClick={() => void saveLoot(f.Name)}
+                      >
+                        {lootBusy === f.Name ? t('files.savingLoot') : t('files.saveLoot')}
                       </button>
                     )}
                     <button type="button" className="btn sm" onClick={() => rename(f.Name)}>

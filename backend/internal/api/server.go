@@ -11,19 +11,26 @@ import (
 	"sync"
 	"time"
 
+	"sliverui/internal/operator"
 	"sliverui/internal/sliver"
 )
 
 // Server holds the HTTP API handlers and the current Sliver connection.
 type Server struct {
-	mu     sync.RWMutex
-	client *sliver.Client
-	auth   *AuthGate
+	mu      sync.RWMutex
+	client  *sliver.Client
+	hub     *sliver.EventHub
+	auth    *AuthGate
+	store   *operator.Store
+	reactID int
 }
 
 // New creates an API server.
 func New() *Server {
-	return &Server{auth: NewAuthGateFromEnv()}
+	return &Server{
+		auth:  NewAuthGateFromEnv(),
+		store: operator.Open(operator.DefaultDir(), operator.CLIReactionsPath()),
+	}
 }
 
 func (s *Server) Client() *sliver.Client {
@@ -34,20 +41,62 @@ func (s *Server) Client() *sliver.Client {
 
 func (s *Server) SetClient(c *sliver.Client) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.client != nil {
-		s.client.Close()
-	}
+	oldHub := s.hub
+	old := s.client
+	s.hub = nil
 	s.client = c
+	s.mu.Unlock()
+
+	if oldHub != nil {
+		oldHub.Stop()
+	}
+	if old != nil {
+		old.Close()
+	}
+	if c == nil {
+		return
+	}
+
+	hub := sliver.NewEventHub(500)
+	hub.Start(c)
+	s.mu.Lock()
+	if s.client == c {
+		s.hub = hub
+		s.mu.Unlock()
+		s.watchReactions(hub, c)
+		return
+	}
+	s.mu.Unlock()
+	hub.Stop()
 }
 
 func (s *Server) ClearClient() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.client != nil {
-		s.client.Close()
-		s.client = nil
+	oldHub := s.hub
+	old := s.client
+	s.hub = nil
+	s.client = nil
+	s.mu.Unlock()
+	if oldHub != nil {
+		oldHub.Stop()
 	}
+	if old != nil {
+		old.Close()
+	}
+}
+
+func (s *Server) eventHub() *sliver.EventHub {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.hub
+}
+
+func (s *Server) eventSnapshot() []sliver.EventView {
+	hub := s.eventHub()
+	if hub == nil {
+		return []sliver.EventView{}
+	}
+	return hub.Snapshot()
 }
 
 func writeJSON(w http.ResponseWriter, code int, v any) {
@@ -150,12 +199,44 @@ func (s *Server) apiRoutes() []route {
 		{"POST", "/api/sessions/{id}/msf", s.handleMsf},
 		{"POST", "/api/sessions/{id}/msf/remote", s.handleMsfRemote},
 		{"POST", "/api/msf/stage", s.handleMsfStage},
+		{"POST", "/api/stage/generate", s.handleStageGenerate},
+		{"GET", "/api/stage-listeners", s.handleStageListenerList},
+		{"POST", "/api/stage-listeners", s.handleStageListenerStart},
+		{"DELETE", "/api/stage-listeners/{id}", s.handleStageListenerStop},
 		{"POST", "/api/sessions/{id}/backdoor", s.handleBackdoor},
 		{"POST", "/api/sessions/{id}/dll-hijack", s.handleHijackDLL},
 		{"POST", "/api/shellcode/rdi", s.handleShellcodeRDI},
+		{"GET", "/api/shellcode/encoders", s.handleShellcodeEncoders},
+		{"POST", "/api/shellcode/encode", s.handleShellcodeEncode},
+		{"POST", "/api/loaders/build", s.handleLoaderBuild},
 		{"POST", "/api/sessions/{id}/exec-shellcode", s.handleExecuteShellcode},
 		{"POST", "/api/sessions/{id}/psexec", s.handlePsExec},
 		{"POST", "/api/sessions/{id}/ping", s.handlePing},
+
+		{"GET", "/api/sessions/{id}/wasm", s.handleWasmList},
+		{"POST", "/api/sessions/{id}/wasm", s.handleWasmRegister},
+		{"POST", "/api/sessions/{id}/wasm/exec", s.handleWasmExec},
+		{"GET", "/api/beacons/{id}/wasm", s.handleWasmList},
+		{"POST", "/api/beacons/{id}/wasm", s.handleWasmRegister},
+		{"POST", "/api/beacons/{id}/wasm/exec", s.handleWasmExec},
+
+		{"GET", "/api/sessions/{id}/rportfwd", s.handleRportFwdList},
+		{"POST", "/api/sessions/{id}/rportfwd", s.handleRportFwdStart},
+		{"DELETE", "/api/sessions/{id}/rportfwd/{listenerID}", s.handleRportFwdStop},
+
+		{"GET", "/api/operator/notes", s.handleOperatorNotes},
+		{"GET", "/api/operator/notes/{uuid}", s.handleOperatorNote},
+		{"PUT", "/api/operator/notes/{uuid}", s.handleOperatorNote},
+		{"DELETE", "/api/operator/notes/{uuid}", s.handleOperatorNote},
+		{"GET", "/api/operator/locks", s.handleOperatorLocks},
+		{"GET", "/api/operator/locks/{sessionID}", s.handleOperatorLock},
+		{"PUT", "/api/operator/locks/{sessionID}", s.handleOperatorLock},
+		{"DELETE", "/api/operator/locks/{sessionID}", s.handleOperatorLock},
+		{"GET", "/api/operator/reactions", s.handleOperatorReactions},
+		{"POST", "/api/operator/reactions", s.handleOperatorReactions},
+		{"DELETE", "/api/operator/reactions/{id}", s.handleOperatorReactionDelete},
+		{"GET", "/api/operator/reaction-log", s.handleOperatorReactionLog},
+		{"GET", "/api/operator/audit", s.handleOperatorAudit},
 
 		{"GET", "/api/sessions/{id}/reg/subkeys", s.handleRegSubKeys},
 		{"GET", "/api/sessions/{id}/reg/values", s.handleRegValues},
@@ -164,6 +245,7 @@ func (s *Server) apiRoutes() []route {
 		{"POST", "/api/sessions/{id}/reg/create-key", s.handleRegCreateKey},
 		{"POST", "/api/sessions/{id}/reg/delete-key", s.handleRegDeleteKey},
 		{"POST", "/api/sessions/{id}/reconfigure", s.handleReconfigure},
+		{"POST", "/api/beacons/{id}/reconfigure", s.handleBeaconReconfigure},
 		{"POST", "/api/sessions/{id}/close", s.handleCloseSession},
 		{"POST", "/api/monitor/start", s.handleMonitorStart},
 		{"POST", "/api/monitor/stop", s.handleMonitorStop},
@@ -186,6 +268,11 @@ func (s *Server) apiRoutes() []route {
 		{"DELETE", "/api/beacons/{id}", s.handleRmBeacon},
 		{"GET", "/api/beacons/{id}/tasks", s.handleBeaconTasks},
 		{"GET", "/api/beacons/{id}/tasks/{taskID}", s.handleBeaconTaskContent},
+		{"POST", "/api/beacons/{id}/tasks/{taskID}/cancel", s.handleCancelBeaconTask},
+		{"POST", "/api/beacons/{id}/exec", s.handleBeaconExec},
+		{"POST", "/api/beacons/{id}/ps", s.handleBeaconPs},
+		{"POST", "/api/beacons/{id}/fs", s.handleBeaconFs},
+		{"POST", "/api/beacons/{id}/screenshot", s.handleBeaconScreenshot},
 		{"POST", "/api/sessions/{id}/rename", s.handleRenameSession},
 
 		{"GET", "/api/implant-profiles", s.handleImplantProfiles},
@@ -212,6 +299,8 @@ func (s *Server) apiRoutes() []route {
 		{"GET", "/api/http-c2-profiles/{name}", s.handleGetHTTPC2Profile},
 		{"POST", "/api/http-c2-profiles", s.handleSaveHTTPC2Profile},
 		{"GET", "/api/traffic-encoders", s.handleListTrafficEncoders},
+		{"POST", "/api/traffic-encoders", s.handleAddTrafficEncoder},
+		{"DELETE", "/api/traffic-encoders/{name}", s.handleRemoveTrafficEncoder},
 
 		{"GET", "/api/wg/config", s.handleWGClientConfig},
 		{"GET", "/api/wg/ip", s.handleWGUniqueIP},
@@ -227,6 +316,7 @@ func (s *Server) apiRoutes() []route {
 		{"DELETE", "/api/socks/{id}", s.handleSocksStop},
 
 		{"GET", "/api/loot", s.handleLootAll},
+		{"GET", "/api/loot/report", s.handleLootReport},
 		{"POST", "/api/loot", s.handleLootAdd},
 		{"POST", "/api/loot/{id}/rename", s.handleLootRename},
 		{"GET", "/api/loot/{id}", s.handleLootContent},
@@ -234,7 +324,11 @@ func (s *Server) apiRoutes() []route {
 		{"GET", "/api/jobs", s.handleJobs},
 		{"GET", "/api/events", s.handleEvents},
 		{"GET", "/api/builders", s.handleBuilders},
+		{"GET", "/api/external-builders", s.handleExternalBuilders},
+		{"GET", "/api/armory", s.handleArmoryIndex},
+		{"POST", "/api/armory/install", s.handleArmoryInstall},
 		{"POST", "/api/generate", s.handleGenerate},
+		{"POST", "/api/implant-builds/{name}/spoof-metadata", s.handleSpoofMetadata},
 		{"POST", "/api/listeners", s.handleListeners},
 		{"DELETE", "/api/listeners/{id}", s.handleStopListener},
 	}
@@ -248,6 +342,7 @@ func (s *Server) Routes() http.Handler {
 	}
 
 	mux.HandleFunc("/ws/sessions/{id}/terminal", s.handleTerminalWS)
+	mux.HandleFunc("/ws/events", s.handleEventsWS)
 
 	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "not found")
@@ -257,17 +352,18 @@ func (s *Server) Routes() http.Handler {
 	})
 	mux.HandleFunc("/", handleStatic)
 
-	return withCORS(withLogging(s.auth.Middleware(mux)))
+	return withCORS(s.withAudit(withLogging(s.auth.Middleware(mux))))
 }
 
 // RoutePatterns returns the full HTTP contract (method + path pattern) of the
 // registered routes, including the terminal WebSocket endpoint.
 func (s *Server) RoutePatterns() []RoutePattern {
-	out := make([]RoutePattern, 0, len(s.apiRoutes())+1)
+	out := make([]RoutePattern, 0, len(s.apiRoutes())+2)
 	for _, r := range s.apiRoutes() {
 		out = append(out, RoutePattern{Method: r.method, Pattern: r.pattern})
 	}
 	out = append(out, RoutePattern{Method: "GET", Pattern: "/ws/sessions/{id}/terminal"})
+	out = append(out, RoutePattern{Method: "GET", Pattern: "/ws/events"})
 	return out
 }
 
@@ -494,16 +590,10 @@ func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
-	c := s.requireClient(w)
-	if c == nil {
+	if s.requireClient(w) == nil {
 		return
 	}
-	events, err := c.Events()
-	if err != nil {
-		writeErr(w, http.StatusInternalServerError, err.Error())
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]any{"events": events})
+	writeJSON(w, http.StatusOK, map[string]any{"events": s.eventSnapshot()})
 }
 
 func (s *Server) handleKillSession(w http.ResponseWriter, r *http.Request) {
@@ -546,7 +636,7 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid request body")
 		return
 	}
-	result, err := c.GenerateImplant(&req)
+	result, err := c.GenerateImplantWithHub(&req, s.eventHub())
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

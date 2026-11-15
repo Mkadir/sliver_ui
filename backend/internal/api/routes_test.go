@@ -24,6 +24,14 @@ func TestRoutesAcceptDynamicResourceIDs(t *testing.T) {
 			req:  httptest.NewRequest(http.MethodGet, "/api/beacons/beacon-123/tasks", nil),
 		},
 		{
+			name: "beacon exec",
+			req:  httptest.NewRequest(http.MethodPost, "/api/beacons/beacon-123/exec", nil),
+		},
+		{
+			name: "events websocket",
+			req:  httptest.NewRequest(http.MethodGet, "/ws/events", nil),
+		},
+		{
 			name: "overview",
 			req:  httptest.NewRequest(http.MethodGet, "/api/overview", nil),
 		},

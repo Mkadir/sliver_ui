@@ -7,6 +7,10 @@ import { api } from '../../lib/api'
 vi.mock('../../lib/api', () => ({
   api: {
     sessions: vi.fn(),
+    pivotGraph: vi.fn(),
+    socksList: vi.fn(),
+    portfwdList: vi.fn(),
+    operatorNotes: vi.fn(),
   },
 }))
 
@@ -15,6 +19,10 @@ const mockedApi = vi.mocked(api)
 describe('SessionsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks()
+    mockedApi.pivotGraph.mockResolvedValue({ Children: [] })
+    mockedApi.socksList.mockResolvedValue({ proxies: [] })
+    mockedApi.portfwdList.mockResolvedValue({ forwards: [] })
+    mockedApi.operatorNotes.mockResolvedValue({ notes: {} })
   })
 
   it('renders session rows from api', async () => {
@@ -51,7 +59,7 @@ describe('SessionsPage', () => {
 
     await waitFor(() => expect(screen.getByText('SESS-1')).toBeInTheDocument())
     expect(screen.getByText('victim-host')).toBeInTheDocument()
-    expect(screen.getByText('root')).toBeInTheDocument()
+    expect(screen.getByText(/root\s*·\s*privileged/)).toBeInTheDocument()
     expect(screen.getByText('10.0.0.5:4242')).toBeInTheDocument()
   })
 

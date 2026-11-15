@@ -185,48 +185,58 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="viz-grid">
-        <div className="card viz-card">
-          <div className="card-title" style={{ marginBottom: 14 }}>
-            {t('dashboard.byOs')}
-          </div>
-          <div className="viz-body">
-            <Donut
-              data={byOs}
-              center={String(sessions.length)}
-              centerSub={t('dashboard.total')}
-              emptyText={t('dashboard.noData')}
-            />
-            <Legend data={byOs} />
-          </div>
+      {(byOs.length > 0 || byTransport.length > 0 || topHosts.length > 0 || byEvent.length > 0) && (
+        <div className="viz-grid">
+          {byOs.length > 0 && (
+            <div className="card viz-card">
+              <div className="card-title" style={{ marginBottom: 14 }}>
+                {t('dashboard.byOs')}
+              </div>
+              <div className="viz-body">
+                <Donut
+                  data={byOs}
+                  center={String(sessions.length)}
+                  centerSub={t('dashboard.total')}
+                  emptyText={t('dashboard.noData')}
+                />
+                <Legend data={byOs} />
+              </div>
+            </div>
+          )}
+          {byTransport.length > 0 && (
+            <div className="card viz-card">
+              <div className="card-title" style={{ marginBottom: 14 }}>
+                {t('dashboard.byTransport')}
+              </div>
+              <div className="viz-body">
+                <Donut
+                  data={byTransport}
+                  center={String(sessions.length + beacons.length)}
+                  centerSub={t('dashboard.total')}
+                  emptyText={t('dashboard.noData')}
+                />
+                <Legend data={byTransport} />
+              </div>
+            </div>
+          )}
+          {topHosts.length > 0 && (
+            <div className="card viz-card">
+              <div className="card-title" style={{ marginBottom: 14 }}>
+                {t('dashboard.topHosts')}
+              </div>
+              <BarList rows={topHosts} emptyText={t('dashboard.noData')} />
+            </div>
+          )}
+          {byEvent.length > 0 && (
+            <div className="card viz-card">
+              <div className="card-title" style={{ marginBottom: 14 }}>
+                {t('dashboard.activity')}
+              </div>
+              <BarList rows={byEvent} emptyText={t('dashboard.noData')} />
+            </div>
+          )}
         </div>
-        <div className="card viz-card">
-          <div className="card-title" style={{ marginBottom: 14 }}>
-            {t('dashboard.byTransport')}
-          </div>
-          <div className="viz-body">
-            <Donut
-              data={byTransport}
-              center={String(sessions.length + beacons.length)}
-              centerSub={t('dashboard.total')}
-              emptyText={t('dashboard.noData')}
-            />
-            <Legend data={byTransport} />
-          </div>
-        </div>
-        <div className="card viz-card">
-          <div className="card-title" style={{ marginBottom: 14 }}>
-            {t('dashboard.topHosts')}
-          </div>
-          <BarList rows={topHosts} emptyText={t('dashboard.noData')} />
-        </div>
-        <div className="card viz-card">
-          <div className="card-title" style={{ marginBottom: 14 }}>
-            {t('dashboard.activity')}
-          </div>
-          <BarList rows={byEvent} emptyText={t('dashboard.noData')} />
-        </div>
-      </div>
+      )}
 
       <div className="dash-grid">
         <div className="card card-flush">

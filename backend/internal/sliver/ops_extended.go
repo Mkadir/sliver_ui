@@ -236,10 +236,12 @@ func (c *Client) DeleteImplantBuild(name string) error {
 
 // --- Regenerate — rebuild an implant without changing config ---
 type RegenerateResult struct {
-	Success bool   `json:"success"`
-	Message string `json:"message"`
-	Name    string `json:"name"`
-	Data    string `json:"data"`
+	Success       bool   `json:"success"`
+	Message       string `json:"message"`
+	Name          string `json:"name"`
+	Data          string `json:"data"`
+	SHA256        string `json:"sha256,omitempty"`
+	CollisionWith string `json:"collision_with,omitempty"`
 }
 
 func (c *Client) Regenerate(implantName string) (*RegenerateResult, error) {
@@ -249,20 +251,27 @@ func (c *Client) Regenerate(implantName string) (*RegenerateResult, error) {
 	if err != nil {
 		return nil, err
 	}
+	var raw []byte
 	var data string
 	if resp.File != nil {
-		data = base64.StdEncoding.EncodeToString(resp.File.Data)
+		raw = resp.File.Data
+		data = base64.StdEncoding.EncodeToString(raw)
 	}
 	name := resp.File.Name
 	if name != "" && filepath.Ext(name) == "" {
 		name += implantFileExtension(c.configFromBuild(ctx, implantName))
 	}
-	return &RegenerateResult{
+	res := &RegenerateResult{
 		Success: true,
 		Message: fmt.Sprintf("regenerated %s", implantName),
 		Name:    name,
 		Data:    data,
-	}, nil
+		SHA256:  sha256Hex(raw),
+	}
+	if other := noteArtifactHash(name, res.SHA256); other != "" {
+		res.CollisionWith = other
+	}
+	return res, nil
 }
 
 // configFromBuild loads the stored implant config for a build so the filename

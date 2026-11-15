@@ -33,6 +33,28 @@ func TestBeaconTaskToView_Nil(t *testing.T) {
 	}
 }
 
+func TestBeaconOpsRequireID(t *testing.T) {
+	c := &Client{}
+	if _, err := c.BeaconExecute("", "/bin/ls", nil); err == nil {
+		t.Fatal("BeaconExecute empty id")
+	}
+	if _, err := c.BeaconExecute("b1", "", nil); err == nil {
+		t.Fatal("BeaconExecute empty path")
+	}
+	if _, err := c.BeaconPs(""); err == nil {
+		t.Fatal("BeaconPs empty id")
+	}
+	if _, err := c.BeaconLs("", "."); err == nil {
+		t.Fatal("BeaconLs empty id")
+	}
+	if _, err := c.BeaconScreenshot(""); err == nil {
+		t.Fatal("BeaconScreenshot empty id")
+	}
+	if err := c.CancelBeaconTask(""); err == nil {
+		t.Fatal("CancelBeaconTask empty id")
+	}
+}
+
 func TestSocksProxyView_StartValidation(t *testing.T) {
 	sm := NewSocksManager(nil)
 	if _, err := sm.Start("", "127.0.0.1", 0, "", ""); err == nil {

@@ -2,8 +2,9 @@ import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
-import type { Session } from '../lib/types'
+import type { Job, Session } from '../lib/types'
 import InlineEdit from '../components/InlineEdit'
+import C2JobStatus from '../components/C2JobStatus'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import { useToast } from '../components/common/Toast'
 import FilesTab from '../components/session/FilesTab'
@@ -19,10 +20,13 @@ import TokensTab from '../components/session/TokensTab'
 import WgTab from '../components/session/WgTab'
 import PivotTab from '../components/session/PivotTab'
 import ServicesTab from '../components/session/ServicesTab'
+import WasmTab from '../components/session/WasmTab'
+import RportfwdTab from '../components/session/RportfwdTab'
+import NotesPanel from '../components/session/NotesPanel'
 import './pages.css'
 import './session.css'
 
-const TABS = ['files', 'processes', 'network', 'env', 'exec', 'screenshot', 'portfwd', 'registry', 'advanced', 'tokens', 'wg', 'pivot', 'services'] as const
+const TABS = ['files', 'processes', 'network', 'env', 'exec', 'screenshot', 'portfwd', 'rportfwd', 'registry', 'advanced', 'wasm', 'tokens', 'wg', 'pivot', 'services'] as const
 type TabKey = (typeof TABS)[number]
 
 type TFunc = ReturnType<typeof useTranslation>['t']
@@ -51,6 +55,21 @@ export default function SessionDetailPage() {
   const [killing, setKilling] = useState(false)
   const [closing, setClosing] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [jobs, setJobs] = useState<Job[]>([])
+
+  useEffect(() => {
+    const loadJobs = () => {
+      api
+        .jobs()
+        .then((d) => setJobs(d.jobs || []))
+        .catch(() => {
+          /* keep last jobs */
+        })
+    }
+    loadJobs()
+    const timer = setInterval(loadJobs, 8000)
+    return () => clearInterval(timer)
+  }, [])
 
   useEffect(() => {
     let alive = true
@@ -184,15 +203,17 @@ export default function SessionDetailPage() {
             </div>
 
             <div className="tab-content">
-              {tab === 'files' && <FilesTab sessionId={session.ID} os={session.OS} />}
+              {tab === 'files' && <FilesTab sessionId={session.ID} os={session.OS} hostKey={session.UUID || session.ID} />}
               {tab === 'processes' && <ProcessesTab sessionId={session.ID} />}
               {tab === 'network' && <NetworkTab sessionId={session.ID} />}
               {tab === 'env' && <EnvTab sessionId={session.ID} />}
               {tab === 'exec' && <ExecTab sessionId={session.ID} />}
               {tab === 'screenshot' && <ScreenshotTab sessionId={session.ID} />}
               {tab === 'portfwd' && <PortfwdTab sessionId={session.ID} />}
+              {tab === 'rportfwd' && <RportfwdTab sessionId={session.ID} activeC2={session.ActiveC2} />}
               {tab === 'registry' && <RegistryTab sessionId={session.ID} os={session.OS} />}
               {tab === 'advanced' && <AdvancedTab sessionId={session.ID} />}
+              {tab === 'wasm' && <WasmTab id={session.ID} kind="session" />}
               {tab === 'tokens' && <TokensTab sessionId={session.ID} os={session.OS} />}
               {tab === 'wg' && <WgTab sessionId={session.ID} isWg={session.Transport === 'wg'} />}
               {tab === 'pivot' && <PivotTab sessionId={session.ID} />}
@@ -235,7 +256,10 @@ export default function SessionDetailPage() {
               </div>
               <div className="side-row">
                 <span className="side-label">{t('detail.sidebar.c2')}</span>
-                <span className="side-value mono">{session.ActiveC2}</span>
+                <span className="side-value c2-cell">
+                  <span className="mono">{session.ActiveC2}</span>
+                  <C2JobStatus url={session.ActiveC2} jobs={jobs} />
+                </span>
               </div>
               <div className="side-row">
                 <span className="side-label">{t('detail.sidebar.checkin')}</span>
@@ -254,6 +278,8 @@ export default function SessionDetailPage() {
                 <span className="side-value mono">{session.UID}/{session.GID}</span>
               </div>
             </div>
+
+            <NotesPanel uuid={session.UUID || session.ID} kind="session" sessionId={session.ID} />
 
             <div className="side-actions">
               <button type="button" className="btn" onClick={() => setClosing(true)}>

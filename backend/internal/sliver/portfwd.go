@@ -172,11 +172,11 @@ func (pf *PortForward) handleConn(conn net.Conn) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	_, err = pf.mgr.client.RPC.Portfwd(ctx, &sliverpb.PortfwdReq{
-		Port:      pf.Port,
-		Protocol:  tcpProtocol,
-		Host:      pf.Host,
-		TunnelID:  tunnel.ID,
-		Request:   &commonpb.Request{SessionID: pf.SessionID},
+		Port:     pf.Port,
+		Protocol: tcpProtocol,
+		Host:     pf.Host,
+		TunnelID: tunnel.ID,
+		Request:  &commonpb.Request{SessionID: pf.SessionID},
 	})
 	if err != nil {
 		tunnel.close()

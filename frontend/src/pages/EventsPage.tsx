@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { api } from '../lib/api'
+import { api, wsUrl } from '../lib/api'
 import type { Event } from '../lib/types'
 import DataTable, { type Column } from '../components/common/DataTable'
 import StatusBadge, { type StatusTone } from '../components/common/StatusBadge'
 import './pages.css'
+
+type WsEventMsg = { type: 'snapshot'; events?: Event[] } | { type: 'event'; event?: Event }
 
 function badgeTone(type: string): StatusTone {
   if (type.includes('SessionOpened') || type.includes('Started')) return 'green'
@@ -18,6 +20,9 @@ function describe(e: Event): string {
   if (e.Beacon) return `${e.Beacon.Name} @ ${e.Beacon.Hostname} (${e.Beacon.RemoteAddress})`
   if (e.Job) return `${e.Job.Name} (${e.Job.Protocol}:${e.Job.Port})`
   if (e.Err) return e.Err
+  if (typeof e.Data?.description === 'string' && e.Data.description) {
+    return e.Data.description
+  }
   return JSON.stringify(e.Data || {}).slice(0, 160)
 }
 
@@ -26,6 +31,8 @@ export default function EventsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
   const [filter, setFilter] = useState<'all' | 'session' | 'beacon' | 'listener'>('all')
+  const [live, setLive] = useState(false)
+  const liveRef = useRef(false)
   const { t } = useTranslation()
 
   const load = async () => {
@@ -41,9 +48,48 @@ export default function EventsPage() {
   }
 
   useEffect(() => {
-    load()
-    const timer = setInterval(load, 5000)
-    return () => clearInterval(timer)
+    void load()
+    let ws: WebSocket | null = null
+    try {
+      ws = new WebSocket(wsUrl('/ws/events'))
+      ws.onopen = () => {
+        liveRef.current = true
+        setLive(true)
+      }
+      ws.onclose = () => {
+        liveRef.current = false
+        setLive(false)
+      }
+      ws.onerror = () => {
+        liveRef.current = false
+        setLive(false)
+      }
+      ws.onmessage = (msg) => {
+        try {
+          const m = JSON.parse(String(msg.data)) as WsEventMsg
+          if (m.type === 'snapshot' && m.events) {
+            setEvents(m.events)
+            setError('')
+            setLoading(false)
+          } else if (m.type === 'event' && m.event) {
+            const next = m.event
+            setEvents((prev) => [next, ...prev].slice(0, 500))
+          }
+        } catch {
+          /* ignore malformed frames */
+        }
+      }
+    } catch {
+      liveRef.current = false
+      setLive(false)
+    }
+    const timer = setInterval(() => {
+      if (!liveRef.current) void load()
+    }, 8000)
+    return () => {
+      clearInterval(timer)
+      if (ws) ws.close()
+    }
   }, [])
 
   const filtered = useMemo(() => {
@@ -71,6 +117,10 @@ export default function EventsPage() {
           <div className="page-sub">{t('events.sub')}</div>
         </div>
         <div className="toolbar">
+          <span className="live-pill">
+            <span className={`dot ${live ? 'ok' : 'bad'}`} />
+            {live ? t('events.live') : t('events.polling')}
+          </span>
           <div className="seg">
             {(['all', 'session', 'beacon', 'listener'] as const).map((f) => (
               <button type="button" key={f} className={filter === f ? 'active' : ''} onClick={() => setFilter(f)}>
@@ -97,7 +147,6 @@ export default function EventsPage() {
           rowKey={(e, i) => `${i}-${e.Type}`}
           loading={loading}
           empty={t('events.empty')}
-          defaultSort={{ key: 'Type', dir: 'asc' }}
         />
       </div>
     </div>

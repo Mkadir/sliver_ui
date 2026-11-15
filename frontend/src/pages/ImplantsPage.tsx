@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
 import { base64ToBytes, triggerDownload } from '../lib/binary'
-import { parseC2Url } from '../lib/c2'
-import type { CompilerInfo, ImplantBuild, ImplantConfig, ImplantProfile, Job, Session } from '../lib/types'
+import { matchC2Job, parseC2Url } from '../lib/c2'
+import { implantHashes, rememberImplantHash, shortHash } from '../lib/artifactHash'
+import type { CompilerInfo, ExternalBuilder, ImplantBuild, ImplantConfig, ImplantProfile, Job, Session } from '../lib/types'
+import C2JobStatus from '../components/C2JobStatus'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import { useToast } from '../components/common/Toast'
 import './pages.css'
@@ -35,6 +38,18 @@ function listenerJobName(type: string): string {
   return type === 'wireguard' ? 'wg' : type
 }
 
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = reader.result as string
+      resolve(result.split(',')[1] || '')
+    }
+    reader.onerror = reject
+    reader.readAsDataURL(file)
+  })
+}
+
 export default function ImplantsPage() {
   const [builds, setBuilds] = useState<ImplantBuild[]>([])
   const [profiles, setProfiles] = useState<ImplantProfile[]>([])
@@ -52,9 +67,14 @@ export default function ImplantsPage() {
   const [c2Port, setC2Port] = useState('443')
   const [reconInterval, setReconInterval] = useState('60')
   const [jitter, setJitter] = useState('20')
+  const [isBeacon, setIsBeacon] = useState(false)
   const [obfuscate, setObfuscate] = useState(true)
   const [debug, setDebug] = useState(false)
   const [evasion, setEvasion] = useState(false)
+  const [sgnEnabled, setSgnEnabled] = useState(false)
+  const [shellcodeEntropy, setShellcodeEntropy] = useState(2)
+  const [replaceExisting, setReplaceExisting] = useState(false)
+  const [continueLoaders, setContinueLoaders] = useState<{ name: string } | null>(null)
   const [httpC2Profile, setHttpC2Profile] = useState('default')
   const [httpC2Profiles, setHttpC2Profiles] = useState<string[]>(['default'])
   const [trafficEncodersEnabled, setTrafficEncodersEnabled] = useState(false)
@@ -63,6 +83,18 @@ export default function ImplantsPage() {
   const [limitDomainJoined, setLimitDomainJoined] = useState(false)
   const [limitHostname, setLimitHostname] = useState('')
   const [limitUsername, setLimitUsername] = useState('')
+  const [limitDatetime, setLimitDatetime] = useState('')
+  const [limitFileExists, setLimitFileExists] = useState('')
+  const [limitLocale, setLimitLocale] = useState('')
+  const [externalBuilderName, setExternalBuilderName] = useState('')
+  const [canaryDomains, setCanaryDomains] = useState('')
+  const [spoofBuildName, setSpoofBuildName] = useState('')
+  const [spoofSource, setSpoofSource] = useState<File | null>(null)
+  const [spoofIcon, setSpoofIcon] = useState<File | null>(null)
+  const [spoofing, setSpoofing] = useState(false)
+  const [hashes, setHashes] = useState<Record<string, string>>(() => implantHashes())
+  const [lastHash, setLastHash] = useState<{ name: string; sha256: string; collision?: string } | null>(null)
+  const [extBuilders, setExtBuilders] = useState<ExternalBuilder[]>([])
   const [serviceNameHint, setServiceNameHint] = useState('OneDrive Updator Service')
   const [serviceDescHint, setServiceDescHint] = useState('Provides update support for Microsoft OneDrive.')
   const [deleting, setDeleting] = useState<{ kind: 'build' | 'profile'; name: string } | null>(null)
@@ -111,12 +143,20 @@ export default function ImplantsPage() {
 
   const loadDetect = async () => {
     try {
-      const [s, j] = await Promise.all([api.sessions(), api.jobs()])
+      const [s, j, eb] = await Promise.all([api.sessions(), api.jobs(), api.externalBuilders()])
       setSessions(s.sessions || [])
       setJobs(j.jobs || [])
+      setExtBuilders(eb.builders || [])
     } catch {
       // best-effort: keep the previous detection when the server is unreachable
     }
+  }
+
+  const recordHash = (name: string, sha256?: string, collision?: string) => {
+    if (!sha256 || !name) return
+    const coll = rememberImplantHash(name, sha256) || collision
+    setHashes(implantHashes())
+    setLastHash({ name, sha256, collision: coll })
   }
 
   const loadOpsecOptions = async () => {
@@ -193,6 +233,7 @@ export default function ImplantsPage() {
     wireguard: c2Type === 'wireguard',
     interval: Number(reconInterval),
     jitter: Number(jitter),
+    is_beacon: isBeacon,
     debug,
     evasion,
     obfuscate,
@@ -203,13 +244,40 @@ export default function ImplantsPage() {
     traffic_encoders: trafficEncodersEnabled ? selectedEncoders : [],
     limit_hostname: limitHostname || undefined,
     limit_username: limitUsername || undefined,
+    limit_datetime: limitDatetime || undefined,
+    limit_file_exists: limitFileExists || undefined,
+    limit_locale: limitLocale || undefined,
+    external_builder_name: externalBuilderName || undefined,
+    sgn_enabled: format === 'shellcode' ? sgnEnabled : false,
+    shellcode_entropy: format === 'shellcode' ? shellcodeEntropy : undefined,
+    shellcode_encoder: format === 'shellcode' && sgnEnabled ? 'SHIKATA_GA_NAI' : undefined,
+    replace_existing: replaceExisting,
+    canary_domains:
+      externalBuilderName || !canaryDomains
+        ? undefined
+        : canaryDomains.split(/[,\s]+/).map((d) => d.trim()).filter(Boolean),
   })
+
+  const nameAlreadyUsed = useMemo(() => {
+    const n = name.trim().toLowerCase()
+    if (!n) return false
+    const base = n.replace(/\.[^.]+$/, '')
+    return builds.some((b) => {
+      const bn = (b.Name || '').toLowerCase()
+      const bb = bn.replace(/\.[^.]+$/, '')
+      return bn === n || bb === base || bn === base || bb === n
+    })
+  }, [builds, name])
+
+  const typedC2Url = `${c2Type}://${c2Host}:${c2Port}`
+  const typedC2Missing =
+    jobs.length > 0 && Boolean(c2Host.trim()) && Boolean(c2Port.trim()) && !matchC2Job(typedC2Url, jobs)
 
   const saveProfile = async () => {
     if (!profileName) return
     setMessage('')
     try {
-      await api.saveImplantProfile({ name: profileName, is_beacon: false, config: buildConfig() })
+      await api.saveImplantProfile({ name: profileName, is_beacon: isBeacon, config: buildConfig() })
       setMessage(t('profiles.saved', { name: profileName }))
       setProfileName('')
       loadProfiles()
@@ -249,27 +317,43 @@ export default function ImplantsPage() {
     }
     if (cfg.Interval) setReconInterval(String(cfg.Interval))
     if (cfg.Jitter !== undefined) setJitter(String(cfg.Jitter))
+    setIsBeacon(!!cfg.IsBeacon)
     if (cfg.Obfuscate !== undefined) setObfuscate(cfg.Obfuscate)
     if (cfg.Debug !== undefined) setDebug(cfg.Debug)
     if (cfg.Evasion !== undefined) setEvasion(cfg.Evasion)
     if (cfg.HTTPC2ConfigName) setHttpC2Profile(cfg.HTTPC2ConfigName)
     if (cfg.TrafficEncodersEnabled !== undefined) setTrafficEncodersEnabled(cfg.TrafficEncodersEnabled)
     if (cfg.LimitDomainJoined !== undefined) setLimitDomainJoined(cfg.LimitDomainJoined)
+    setLimitDatetime(cfg.LimitDatetime || '')
+    setLimitFileExists(cfg.LimitFileExists || '')
+    setLimitLocale(cfg.LimitLocale || '')
+    setCanaryDomains((cfg.CanaryDomains || []).join(', '))
     setMessage(t('profiles.loaded', { name: p.Name }))
   }
 
   const generate = async () => {
     setGenerating(true)
     setMessage('')
+    setContinueLoaders(null)
     try {
       const cfg = buildConfig()
       const res = await api.generate(cfg)
-      if (res.success && res.data) {
-        triggerDownload(res.name || name, base64ToBytes(res.data))
+      if (res.pending) {
+        setMessage(t('implants.pendingExternal', { id: res.build_id || '' }))
+      } else {
+        if (res.success && res.data) {
+          triggerDownload(res.name || name, base64ToBytes(res.data))
+        }
+        if (res.success) recordHash(res.name || name, res.sha256, res.collision_with)
+        if (res.success && (format === 'shared' || format === 'shellcode')) {
+          setContinueLoaders({ name: res.name || name })
+          setMessage(t('implants.generatedContinue', { msg: res.message }))
+        } else {
+          setMessage(
+            res.success ? t('implants.generated', { msg: res.message }) : t('implants.failed', { msg: res.message }),
+          )
+        }
       }
-      setMessage(
-        res.success ? t('implants.generated', { msg: res.message }) : t('implants.failed', { msg: res.message }),
-      )
       load()
     } catch (e) {
       setMessage(t('implants.failed', { msg: (e as Error).message }))
@@ -284,6 +368,7 @@ export default function ImplantsPage() {
       const res = await api.regenerate(b.Name)
       if (res.data) {
         triggerDownload(res.name || b.Name, base64ToBytes(res.data))
+        recordHash(res.name || b.Name, res.sha256, res.collision_with)
       } else {
         setMessage(t('implants.failed', { msg: 'no file data returned' }))
       }
@@ -296,6 +381,7 @@ export default function ImplantsPage() {
     setMessage('')
     try {
       const res = await api.regenerate(b.Name)
+      if (res.success) recordHash(res.name || b.Name, res.sha256, res.collision_with)
       setMessage(
         res.success ? t('implants.regenerated', { name: b.Name }) : t('implants.failed', { msg: res.message }),
       )
@@ -319,6 +405,31 @@ export default function ImplantsPage() {
     }
   }
 
+  const windowsPeBuilds = builds.filter(
+    (b) => (b.OS || b.ImplantConfig?.OS || '').toLowerCase() === 'windows',
+  )
+
+  const spoofApply = async () => {
+    const target = spoofBuildName || windowsPeBuilds[0]?.Name || ''
+    if (!target || !spoofSource) return
+    setSpoofing(true)
+    try {
+      const source_b64 = await fileToBase64(spoofSource)
+      const icon_b64 = spoofIcon ? await fileToBase64(spoofIcon) : undefined
+      await api.spoofMetadata(target, {
+        source_name: spoofSource.name,
+        source_b64,
+        icon_name: spoofIcon?.name,
+        icon_b64,
+      })
+      toast.push('success', t('implants.spoofDone', { name: target }))
+    } catch (e) {
+      setMessage(t('implants.failed', { msg: (e as Error).message }))
+    } finally {
+      setSpoofing(false)
+    }
+  }
+
   return (
     <div className="page">
       <div className="page-header">
@@ -334,15 +445,24 @@ export default function ImplantsPage() {
       </div>
       {error && <div className="error-banner">{error}</div>}
       {message && (
-        <div
-          className="error-banner"
-          style={{
-            borderColor: 'var(--green)',
-            color: 'var(--green)',
-            background: 'var(--success-bg)',
-          }}
-        >
+        <div className="success-banner">
           {message}
+          {continueLoaders && (
+            <>
+              {' '}
+              <Link to={`/loaders?build=${encodeURIComponent(continueLoaders.name)}`}>
+                {t('implants.continueLoaders')}
+              </Link>
+            </>
+          )}
+        </div>
+      )}
+      {lastHash && (
+        <div className="success-banner">
+          {t('implants.lastHash', { name: lastHash.name, hash: shortHash(lastHash.sha256) })}
+          {lastHash.collision && (
+            <div className="form-hint warn-hint">{t('implants.collision', { other: lastHash.collision })}</div>
+          )}
         </div>
       )}
 
@@ -356,6 +476,20 @@ export default function ImplantsPage() {
           {compiler.CrossCompilers?.map((cc) => (
             <span key={`${cc.TargetGOOS}/${cc.TargetGOARCH}`} className="compiler-tag mono">
               {cc.TargetGOOS}/{cc.TargetGOARCH}
+            </span>
+          ))}
+        </div>
+      )}
+      {extBuilders.length > 0 && (
+        <div className="compiler-strip">
+          <span className="compiler-tag">{t('implants.extBuilders')}</span>
+          {extBuilders.map((b) => (
+            <span key={`${b.name}-${b.operator_name}`} className="compiler-tag mono" title={(b.targets || []).join(', ')}>
+              {t('implants.extBuilderLine', {
+                name: b.name || 'builder',
+                operator: b.operator_name || '—',
+                target: `${b.goos}/${b.goarch}`,
+              })}
             </span>
           ))}
         </div>
@@ -375,6 +509,87 @@ export default function ImplantsPage() {
           ))}
         </div>
       )}
+
+      <div className="card card-flush">
+        <table className="data">
+          <thead>
+            <tr>
+              <th>{t('implants.thName')}</th>
+              <th>{t('implants.thOsArch')}</th>
+              <th>{t('implants.thFormat')}</th>
+              <th>{t('implants.thHash')}</th>
+              <th>{t('implants.thC2')}</th>
+              <th>{t('implants.thInterval')}</th>
+              <th>{t('implants.thObfuscated')}</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {builds.length === 0 && (
+              <tr>
+                <td colSpan={8} className="empty">
+                  {t('implants.empty')}
+                </td>
+              </tr>
+            )}
+            {builds.map((b) => (
+              <tr key={b.Name}>
+                <td className="mono">{b.Name}</td>
+                <td>
+                  <span className="badge blue">
+                    {b.OS}/{b.Arch}
+                  </span>
+                </td>
+                <td>{b.ImplantConfig?.Format || '-'}</td>
+                <td className="mono" title={hashes[b.Name] || ''}>
+                  {hashes[b.Name] ? shortHash(hashes[b.Name]) : '—'}
+                </td>
+                <td>
+                  {(b.ImplantConfig?.C2 || []).length === 0
+                    ? '-'
+                    : (b.ImplantConfig?.C2 || []).map((c) => (
+                        <div key={c.URL} className="c2-cell">
+                          <span className="mono">{c.URL}</span>
+                          <C2JobStatus url={c.URL} jobs={jobs} />
+                        </div>
+                      ))}
+                </td>
+                <td className="mono">
+                  {b.ImplantConfig?.IsBeacon ? `${t('implants.beaconShort')} ` : ''}
+                  {b.ImplantConfig?.Interval}s / {b.ImplantConfig?.Jitter}%
+                </td>
+                <td>{b.ImplantConfig?.Obfuscate ? t('common.yes') : t('common.no')}</td>
+                <td>
+                  <div className="fs-actions">
+                    <button type="button" className="btn sm" onClick={() => downloadBuild(b)}>
+                      {t('implants.download')}
+                    </button>
+                    <button type="button" className="btn sm" onClick={() => regenerateBuild(b)}>
+                      {t('implants.regenerate')}
+                    </button>
+                    {(() => {
+                      const fmt = (b.ImplantConfig?.Format || '').toUpperCase()
+                      const loaderFmt =
+                        fmt.includes('SHELLCODE') || fmt.includes('SHARED') || fmt === 'SHARED_LIB'
+                      return loaderFmt ? (
+                        <Link
+                          className="btn sm"
+                          to={`/loaders?build=${encodeURIComponent(b.Name)}`}
+                        >
+                          {t('implants.sendToLoaders')}
+                        </Link>
+                      ) : null
+                    })()}
+                    <button type="button" className="btn sm danger" onClick={() => setDeleting({ kind: 'build', name: b.Name })}>
+                      {t('profiles.delete')}
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <div className="card">
         <div className="card-title">{t('implants.genTitle')}</div>
@@ -443,32 +658,62 @@ export default function ImplantsPage() {
             <label>{t('implants.c2Port')}</label>
             <input value={c2Port} onChange={(e) => setC2Port(e.target.value)} />
           </div>
+          <div className="field check">
+            <label>
+              <input type="checkbox" checked={isBeacon} onChange={(e) => setIsBeacon(e.target.checked)} />
+              {t('implants.isBeacon')}
+            </label>
+          </div>
           <div className="field">
-            <label>{t('implants.interval')}</label>
+            <label>{isBeacon ? t('implants.beaconInterval') : t('implants.interval')}</label>
             <input type="number" value={reconInterval} onChange={(e) => setReconInterval(e.target.value)} />
           </div>
           <div className="field">
             <label>{t('implants.jitter')}</label>
             <input type="number" value={jitter} onChange={(e) => setJitter(e.target.value)} />
           </div>
-          <div className="field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          {isBeacon && (
+            <div className="form-hint span-all">{t('implants.beaconHint')}</div>
+          )}
+          <div className="field check">
+            <label>
               <input type="checkbox" checked={obfuscate} onChange={(e) => setObfuscate(e.target.checked)} />
               {t('implants.obfuscate')}
             </label>
           </div>
-          <div className="field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="field check">
+            <label>
               <input type="checkbox" checked={debug} onChange={(e) => setDebug(e.target.checked)} />
               {t('implants.debug')}
             </label>
           </div>
-          <div className="field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="field check">
+            <label>
               <input type="checkbox" checked={evasion} onChange={(e) => setEvasion(e.target.checked)} />
               {t('implants.evasion')}
             </label>
           </div>
+          {format === 'shellcode' && (
+            <>
+              <div className="field check">
+                <label>
+                  <input type="checkbox" checked={sgnEnabled} onChange={(e) => setSgnEnabled(e.target.checked)} />
+                  {t('implants.sgnEnabled')}
+                </label>
+              </div>
+              <div className="field">
+                <label>{t('implants.shellcodeEntropy')}</label>
+                <select
+                  value={shellcodeEntropy}
+                  onChange={(e) => setShellcodeEntropy(Number(e.target.value))}
+                >
+                  <option value={1}>{t('implants.entropyNone')}</option>
+                  <option value={2}>{t('implants.entropyNames')}</option>
+                  <option value={3}>{t('implants.entropyEncrypt')}</option>
+                </select>
+              </div>
+            </>
+          )}
           {(c2Type === 'http' || c2Type === 'https') && (
             <div className="field">
               <label>{t('implants.httpC2Profile')}</label>
@@ -481,8 +726,8 @@ export default function ImplantsPage() {
               </select>
             </div>
           )}
-          <div className="field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="field check">
+            <label>
               <input
                 type="checkbox"
                 checked={trafficEncodersEnabled}
@@ -510,8 +755,8 @@ export default function ImplantsPage() {
               </select>
             </div>
           )}
-          <div className="field">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div className="field check">
+            <label>
               <input
                 type="checkbox"
                 checked={limitDomainJoined}
@@ -532,12 +777,78 @@ export default function ImplantsPage() {
             <label>{t('implants.limitUsername')}</label>
             <input value={limitUsername} onChange={(e) => setLimitUsername(e.target.value)} />
           </div>
-          <div className="field" style={{ justifyContent: 'flex-end' }}>
+          <div className="field">
+            <label>{t('implants.limitDatetime')}</label>
+            <input
+              type="text"
+              value={limitDatetime}
+              onChange={(e) => setLimitDatetime(e.target.value)}
+              placeholder="2025-12-31T23:59:59Z"
+            />
+          </div>
+          <div className="form-hint span-all">{t('implants.limitDatetimeHint')}</div>
+          <div className="field">
+            <label>{t('implants.limitFileExists')}</label>
+            <input
+              value={limitFileExists}
+              onChange={(e) => setLimitFileExists(e.target.value)}
+              placeholder="C:\Windows\System32\notepad.exe"
+            />
+          </div>
+          <div className="field">
+            <label>{t('implants.limitLocale')}</label>
+            <input
+              value={limitLocale}
+              onChange={(e) => setLimitLocale(e.target.value)}
+              placeholder="en-US"
+            />
+          </div>
+          <div className="field">
+            <label>{t('implants.externalBuilder')}</label>
+            <select value={externalBuilderName} onChange={(e) => setExternalBuilderName(e.target.value)}>
+              <option value="">{t('implants.externalBuilderNone')}</option>
+              {extBuilders.map((b) => (
+                <option key={`${b.name}-${b.operator_name}`} value={b.name}>
+                  {t('implants.extBuilderLine', {
+                    name: b.name || 'builder',
+                    operator: b.operator_name || '—',
+                    target: `${b.goos}/${b.goarch}`,
+                  })}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="form-hint span-all">{t('implants.externalBuilderHint')}</div>
+          <div className="field span-all">
+            <label>{t('implants.canaryDomains')}</label>
+            <input
+              value={canaryDomains}
+              onChange={(e) => setCanaryDomains(e.target.value)}
+              placeholder="cdn.example.com, updates.example.net"
+            />
+          </div>
+          <div className="form-hint span-all">{t('implants.canaryHint')}</div>
+          <div className="field check">
+            <label>
+              <input
+                type="checkbox"
+                checked={replaceExisting}
+                onChange={(e) => setReplaceExisting(e.target.checked)}
+              />
+              {t('implants.replaceExisting')}
+            </label>
+          </div>
+          <div className="field span-all form-actions">
             <button type="button" className="btn primary" onClick={generate} disabled={generating}>
               {generating ? t('implants.generating') : t('implants.generate')}
             </button>
           </div>
         </div>
+        {nameAlreadyUsed && !replaceExisting && (
+          <div className="form-hint warn-hint">
+            {t('implants.nameTakenHint', { name })}
+          </div>
+        )}
         {format === 'service' && (
           <div className="form-hint" style={{ marginTop: 10 }}>
             <strong>{t('implants.serviceHintTitle')}</strong> {t('implants.serviceHintBody')}
@@ -587,23 +898,18 @@ export default function ImplantsPage() {
             </button>
           </div>
         )}
-        <div className="profile-save" style={{ marginTop: 4, display: 'flex', gap: 8, alignItems: 'center' }}>
+        {typedC2Missing && (
+          <div className="form-hint warn-hint" style={{ marginTop: 8 }}>
+            {t('implants.typedC2Missing', { url: typedC2Url, type: c2Type })}
+          </div>
+        )}
+        <div className="profile-save">
           <input
             className="profile-name-input"
             type="text"
             placeholder={t('profiles.profileName')}
             value={profileName}
             onChange={(e) => setProfileName(e.target.value)}
-            style={{
-              padding: '6px 10px',
-              borderRadius: 'var(--radius)',
-              border: '1px solid var(--border-strong)',
-              background: 'var(--surface-soft)',
-              color: 'var(--text)',
-              fontSize: 'var(--fs-base)',
-              flex: 1,
-              maxWidth: 320,
-            }}
           />
           <button type="button" className="btn" onClick={saveProfile} disabled={!profileName}>
             {t('profiles.saveAs')}
@@ -611,9 +917,53 @@ export default function ImplantsPage() {
         </div>
       </div>
 
+      <div className="card">
+        <div className="card-title">{t('implants.spoofTitle')}</div>
+        <div className="form-hint" style={{ marginBottom: 10 }}>
+          {t('implants.spoofHint')}
+        </div>
+        {windowsPeBuilds.length === 0 ? (
+          <div className="form-hint">{t('implants.spoofWindowsOnly')}</div>
+        ) : (
+          <div className="form-grid">
+            <div className="field">
+              <label>{t('implants.spoofPickBuild')}</label>
+              <select
+                value={spoofBuildName || windowsPeBuilds[0]?.Name || ''}
+                onChange={(e) => setSpoofBuildName(e.target.value)}
+              >
+                {windowsPeBuilds.map((b) => (
+                  <option key={b.Name} value={b.Name}>
+                    {b.Name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="field">
+              <label>{t('implants.spoofSource')}</label>
+              <input type="file" onChange={(e) => setSpoofSource(e.target.files?.[0] || null)} />
+            </div>
+            <div className="field">
+              <label>{t('implants.spoofIcon')}</label>
+              <input type="file" onChange={(e) => setSpoofIcon(e.target.files?.[0] || null)} />
+            </div>
+            <div className="field span-all form-actions">
+              <button
+                type="button"
+                className="btn primary"
+                onClick={spoofApply}
+                disabled={spoofing || !spoofSource}
+              >
+                {t('implants.spoofApply')}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
       {profiles.length > 0 && (
         <div className="card card-flush">
-          <div className="card-title" style={{ padding: '14px 16px', borderBottom: '1px solid var(--border)', margin: 0 }}>
+          <div className="card-title bar">
             {t('profiles.title')}
           </div>
           <table className="data">
@@ -639,6 +989,7 @@ export default function ImplantsPage() {
                   <td>{p.Config?.Format || '-'}</td>
                   <td className="mono">{p.Config?.C2?.map((c) => c.URL).join(', ') || '-'}</td>
                   <td className="mono">
+                    {p.Config?.IsBeacon ? `${t('implants.beaconShort')} ` : ''}
                     {p.Config?.Interval}s / {p.Config?.Jitter}%
                   </td>
                   <td>
@@ -646,6 +997,18 @@ export default function ImplantsPage() {
                       <button type="button" className="btn sm" onClick={() => loadProfile(p)}>
                         {t('profiles.load')}
                       </button>
+                      {(() => {
+                        const fmt = (p.Config?.Format || '').toUpperCase()
+                        const stageFmt = fmt.includes('SHELLCODE') || fmt.includes('SHARED')
+                        return stageFmt ? (
+                          <Link
+                            className="btn sm"
+                            to={`/loaders?tab=stage&profile=${encodeURIComponent(p.Name)}`}
+                          >
+                            {t('implants.sendToLoaders')}
+                          </Link>
+                        ) : null
+                      })()}
                       <button type="button" className="btn sm danger" onClick={() => setDeleting({ kind: 'profile', name: p.Name })}>
                         {t('profiles.delete')}
                       </button>
@@ -658,61 +1021,6 @@ export default function ImplantsPage() {
         </div>
       )}
 
-      <div className="card card-flush">
-        <table className="data">
-          <thead>
-            <tr>
-              <th>{t('implants.thName')}</th>
-              <th>{t('implants.thOsArch')}</th>
-              <th>{t('implants.thFormat')}</th>
-              <th>{t('implants.thC2')}</th>
-              <th>{t('implants.thInterval')}</th>
-              <th>{t('implants.thObfuscated')}</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {builds.length === 0 && (
-              <tr>
-                <td colSpan={7} className="empty">
-                  {t('implants.empty')}
-                </td>
-              </tr>
-            )}
-            {builds.map((b) => (
-              <tr key={b.Name}>
-                <td className="mono">{b.Name}</td>
-                <td>
-                  <span className="badge blue">
-                    {b.OS}/{b.Arch}
-                  </span>
-                </td>
-                <td>{b.ImplantConfig?.Format || '-'}</td>
-                <td className="mono">
-                  {b.ImplantConfig?.C2?.map((c) => c.URL).join(', ') || '-'}
-                </td>
-                <td className="mono">
-                  {b.ImplantConfig?.Interval}s / {b.ImplantConfig?.Jitter}%
-                </td>
-                <td>{b.ImplantConfig?.Obfuscate ? t('common.yes') : t('common.no')}</td>
-                <td>
-                  <div className="fs-actions">
-                    <button type="button" className="btn sm" onClick={() => downloadBuild(b)}>
-                      {t('implants.download')}
-                    </button>
-                    <button type="button" className="btn sm" onClick={() => regenerateBuild(b)}>
-                      {t('implants.regenerate')}
-                    </button>
-                    <button type="button" className="btn sm danger" onClick={() => setDeleting({ kind: 'build', name: b.Name })}>
-                      {t('profiles.delete')}
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
       <ConfirmDialog
         open={!!deleting}
         title={deleting?.kind === 'build' ? t('implants.confirmDelete') : t('profiles.confirmDelete')}

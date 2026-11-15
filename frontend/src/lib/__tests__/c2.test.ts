@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseC2Url } from '../c2'
+import { parseC2Url, matchC2Job } from '../c2'
 
 describe('parseC2Url', () => {
   it('splits a full C2 URL', () => {
@@ -14,5 +14,26 @@ describe('parseC2Url', () => {
   it('falls back to mtls when no protocol is present', () => {
     expect(parseC2Url('1.2.3.4:8888')).toEqual({ proto: 'mtls', host: '1.2.3.4', port: '8888' })
     expect(parseC2Url('')).toEqual({ proto: 'mtls', host: '', port: '' })
+  })
+})
+
+describe('matchC2Job', () => {
+  const jobs = [
+    { ID: 1, Name: 'https', Protocol: 'tcp', Port: 443 },
+    { ID: 2, Name: 'mtls', Protocol: 'tcp', Port: 8888 },
+  ]
+
+  it('matches https C2 to an https listener on 443', () => {
+    const j = matchC2Job('https://127.0.0.1:443', jobs)
+    expect(j?.ID).toBe(1)
+  })
+
+  it('matches mtls C2 to the mtls job', () => {
+    const j = matchC2Job('mtls://127.0.0.1:8888', jobs)
+    expect(j?.ID).toBe(2)
+  })
+
+  it('returns undefined when no live job shares protocol+port', () => {
+    expect(matchC2Job('https://127.0.0.1:8443', jobs)).toBeUndefined()
   })
 })

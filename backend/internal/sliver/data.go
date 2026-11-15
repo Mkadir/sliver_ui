@@ -7,6 +7,7 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // SessionView is the JSON shape returned by the API.
@@ -35,6 +36,7 @@ type SessionView struct {
 type BeaconView struct {
 	ID            string `json:"ID"`
 	Name          string `json:"Name"`
+	UUID          string `json:"UUID"`
 	Hostname      string `json:"Hostname"`
 	Username      string `json:"Username"`
 	OS            string `json:"OS"`
@@ -257,16 +259,33 @@ func eventToView(e *clientpb.Event) EventView {
 		}
 		ev.Job = &JobView{ID: e.Job.ID, Name: e.Job.Name, Type: e.Job.Protocol, Port: e.Job.Port, Domains: domains}
 	}
+	// v1.7.3 clientpb.Event has no Beacon field; the server marshals the
+	// beacon (or task) into Data.
+	if len(e.Data) > 0 {
+		ev.Data["raw"] = string(e.Data)
+		switch e.EventType {
+		case "beacon-registered":
+			b := &clientpb.Beacon{}
+			if err := proto.Unmarshal(e.Data, b); err == nil && b.GetID() != "" {
+				bv := beaconToView(b)
+				ev.Beacon = &bv
+			}
+		case "beacon-taskresult":
+			task := &clientpb.BeaconTask{}
+			if err := proto.Unmarshal(e.Data, task); err == nil && task.GetID() != "" {
+				ev.Data["task_id"] = task.ID
+				ev.Data["beacon_id"] = task.BeaconID
+				ev.Data["description"] = task.Description
+				ev.Data["state"] = task.State
+			}
+		}
+	}
 	return ev
 }
 
-// Events reads from the server event stream until an error or timeout.
-// Events collects server events by opening a streaming RPC and reading
-// until the context deadline. The Sliver Events stream only sends NEW
-// events from the moment the stream is opened — there is no replay of
-// historical events. A short timeout (3s) caused most polls to return
-// empty because events rarely arrive within that window. We use 10s
-// to give events a reasonable chance to arrive.
+// Events is a one-shot drain of the Sliver Events stream with a timeout.
+// The live UI uses EventHub (started from SetClient) instead: this method
+// opens a second stream and still cannot replay history.
 func (c *Client) Events() ([]EventView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -304,9 +323,9 @@ func sessionToView(s *clientpb.Session) SessionView {
 		LastCheckin:   unixTimeString(s.LastCheckin),
 		ActiveC2:      s.ActiveC2,
 		// Sliver v1.15.16 的 clientpb.Session 无 Locale 字段，留空
-		Locale:        "",
-		AgentVersion:  s.Version,
-		IsDead:        s.IsDead,
+		Locale:       "",
+		AgentVersion: s.Version,
+		IsDead:       s.IsDead,
 		// Sliver v1.15.16 无 IsInteractive 字段，用 !IsDead 作为近似
 		IsInteractive: !s.IsDead,
 	}
@@ -316,6 +335,7 @@ func beaconToView(b *clientpb.Beacon) BeaconView {
 	return BeaconView{
 		ID:            b.ID,
 		Name:          b.Name,
+		UUID:          b.UUID,
 		Hostname:      b.Hostname,
 		Username:      b.Username,
 		OS:            b.OS,

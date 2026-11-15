@@ -2,13 +2,15 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
-import type { Session } from '../lib/types'
+import type { OperatorNote, PivotGraphEntry, PortForward, Session, SocksProxy } from '../lib/types'
+import { isPrivilegedSession } from '../lib/privilege'
 import InlineEdit from '../components/InlineEdit'
 import DataTable, { type Column } from '../components/common/DataTable'
 import StatusBadge from '../components/common/StatusBadge'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import ContextMenu from '../components/common/ContextMenu'
 import EmptyState from '../components/common/EmptyState'
+import PivotGraphView from '../components/session/PivotGraphView'
 import { useToast } from '../components/common/Toast'
 import './pages.css'
 
@@ -36,6 +38,12 @@ export default function SessionsPage() {
   const [busy, setBusy] = useState(false)
   const [selected, setSelected] = useState<Session | null>(null)
   const [pruning, setPruning] = useState(false)
+  const [view, setView] = useState<'table' | 'graph'>('table')
+  const [graph, setGraph] = useState<PivotGraphEntry[]>([])
+  const [socks, setSocks] = useState<SocksProxy[]>([])
+  const [forwards, setForwards] = useState<PortForward[]>([])
+  const [notes, setNotes] = useState<Record<string, OperatorNote>>({})
+  const [compare, setCompare] = useState<string[]>([])
   const navigate = useNavigate()
   const { t } = useTranslation()
   const toast = useToast()
@@ -54,10 +62,32 @@ export default function SessionsPage() {
   }
   loadRef.current = load
 
+  const loadGraph = async () => {
+    try {
+      const [g, p, f, n] = await Promise.all([
+        api.pivotGraph(),
+        api.socksList(),
+        api.portfwdList(),
+        api.operatorNotes().catch(() => ({ notes: {} as Record<string, OperatorNote> })),
+      ])
+      setGraph(g.Children || [])
+      setSocks(p.proxies || [])
+      setForwards(f.forwards || [])
+      setNotes(n.notes || {})
+    } catch {
+      /* keep last graph */
+    }
+  }
+
   useEffect(() => {
     load()
+    loadGraph()
     const timer = setInterval(load, 3000)
-    return () => clearInterval(timer)
+    const g = setInterval(loadGraph, 8000)
+    return () => {
+      clearInterval(timer)
+      clearInterval(g)
+    }
   }, [])
 
   useEffect(() => {
@@ -134,7 +164,17 @@ export default function SessionsPage() {
       render: () => <StatusBadge tone="blue">SESSION</StatusBadge>,
     },
     { key: 'Hostname', label: t('sessions.thHost'), sortable: true },
-    { key: 'Username', label: t('sessions.thUser'), sortable: true },
+    {
+      key: 'Username',
+      label: t('sessions.thUser'),
+      sortable: true,
+      render: (s) => (
+        <span className={isPrivilegedSession(s) ? 'priv-user' : undefined}>
+          {s.Username}
+          {isPrivilegedSession(s) ? ` · ${t('sessions.privileged')}` : ''}
+        </span>
+      ),
+    },
     {
       key: 'OS',
       label: t('sessions.thOsArch'),
@@ -174,6 +214,41 @@ export default function SessionsPage() {
         </StatusBadge>
       ),
     },
+    {
+      key: 'Tags',
+      label: t('sessions.thTags'),
+      render: (s) => {
+        const tags = notes[s.UUID || s.ID]?.tags || []
+        if (tags.length === 0) return '—'
+        return (
+          <span className="op-tags">
+            {tags.map((tag) => (
+              <span key={tag} className="op-tag">
+                {tag}
+              </span>
+            ))}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'Compare',
+      label: t('sessions.compare'),
+      render: (s) => (
+        <input
+          type="checkbox"
+          checked={compare.includes(s.ID)}
+          onClick={(e) => e.stopPropagation()}
+          onChange={() => {
+            setCompare((cur) => {
+              if (cur.includes(s.ID)) return cur.filter((id) => id !== s.ID)
+              if (cur.length >= 2) return [cur[1], s.ID]
+              return [...cur, s.ID]
+            })
+          }}
+        />
+      ),
+    },
   ]
 
   return (
@@ -184,6 +259,14 @@ export default function SessionsPage() {
           <div className="page-sub">{t('sessions.sub', { count: sessions.length })}</div>
         </div>
         <div className="toolbar">
+          <div className="seg">
+            <button type="button" className={view === 'table' ? 'active' : ''} onClick={() => setView('table')}>
+              {t('sessions.viewTable')}
+            </button>
+            <button type="button" className={view === 'graph' ? 'active' : ''} onClick={() => setView('graph')}>
+              {t('sessions.viewGraph')}
+            </button>
+          </div>
           <span className="kbd-hint mono">
             <kbd className="kbd">R</kbd> {t('common.refresh')}
             <kbd className="kbd">T</kbd> {t('common.terminal')}
@@ -192,12 +275,35 @@ export default function SessionsPage() {
           <button type="button" className="btn" onClick={prune} disabled={pruning}>
             {pruning ? t('common.loading') : t('sessions.prune')}
           </button>
-          <button type="button" className="btn" onClick={load}>
+          <button type="button" className="btn" onClick={() => { load(); loadGraph() }}>
             {t('common.refresh')}
           </button>
         </div>
       </div>
       {error && <div className="error-banner">{error}</div>}
+      {(socks.length > 0 || forwards.length > 0) && (
+        <div className="compiler-strip">
+          <span className="compiler-tag">{t('sessions.proxyMonitor')}</span>
+          <span className="compiler-tag mono">{t('sessions.socksCount', { count: socks.length })}</span>
+          <span className="compiler-tag mono">{t('sessions.portfwdCount', { count: forwards.length })}</span>
+        </div>
+      )}
+      {view === 'graph' ? (
+        <div className="card">
+          {sessions.length === 0 && graph.length === 0 ? (
+            <EmptyState title={t('sessions.empty')} subtitle={t('sessions.emptySub')} />
+          ) : (
+            <PivotGraphView
+              graph={graph}
+              sessions={sessions}
+              onSelect={(id) => navigate(`/sessions/${id}`)}
+            />
+          )}
+          <div className="form-hint" style={{ marginTop: 12 }}>
+            {t('sessions.graphHint')}
+          </div>
+        </div>
+      ) : (
       <div className="card card-flush">
         <DataTable
           columns={columns}
@@ -223,6 +329,53 @@ export default function SessionsPage() {
           navigable
         />
       </div>
+      )}
+      {compare.length > 0 && (
+        <div className="card session-compare">
+          <div className="card-title">{t('sessions.compare')}</div>
+          <p className="form-hint">{t('sessions.compareHint')}</p>
+          {compare.length < 2 ? (
+            <div className="empty">{t('sessions.compareNeedTwo')}</div>
+          ) : (
+            (() => {
+              const a = sessions.find((s) => s.ID === compare[0])
+              const b = sessions.find((s) => s.ID === compare[1])
+              if (!a || !b) return <div className="empty">{t('sessions.compareNeedTwo')}</div>
+              const rows: { key: string; a: string; b: string }[] = [
+                { key: 'Name', a: a.Name, b: b.Name },
+                { key: 'Hostname', a: a.Hostname, b: b.Hostname },
+                { key: 'Username', a: a.Username, b: b.Username },
+                { key: 'OS', a: `${a.OS}/${a.Arch}`, b: `${b.OS}/${b.Arch}` },
+                { key: 'Transport', a: a.Transport, b: b.Transport },
+                { key: 'Remote', a: a.RemoteAddress, b: b.RemoteAddress },
+                { key: 'C2', a: a.ActiveC2, b: b.ActiveC2 },
+                { key: 'UID', a: a.UID, b: b.UID },
+                { key: 'Tags', a: (notes[a.UUID || a.ID]?.tags || []).join(', '), b: (notes[b.UUID || b.ID]?.tags || []).join(', ') },
+              ]
+              return (
+                <table className="data">
+                  <thead>
+                    <tr>
+                      <th></th>
+                      <th>{a.Name || t('sessions.compareA')}</th>
+                      <th>{b.Name || t('sessions.compareB')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((row) => (
+                      <tr key={row.key}>
+                        <td>{row.key}</td>
+                        <td className={row.a === row.b ? undefined : 'diff'}>{row.a || '—'}</td>
+                        <td className={row.a === row.b ? undefined : 'diff'}>{row.b || '—'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )
+            })()
+          )}
+        </div>
+      )}
       {menu && (
         <ContextMenu
           x={menu.x}

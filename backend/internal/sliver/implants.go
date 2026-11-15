@@ -15,11 +15,11 @@ import (
 
 // GenerateRequest is the JSON body for implant generation.
 type GenerateRequest struct {
-	Name        string `json:"name"`
-	OS          string `json:"os"`
-	Arch        string `json:"arch"`
-	Format      string `json:"format"`
-	C2          []struct {
+	Name   string `json:"name"`
+	OS     string `json:"os"`
+	Arch   string `json:"arch"`
+	Format string `json:"format"`
+	C2     []struct {
 		Address  string `json:"address"`
 		Protocol string `json:"protocol"`
 	} `json:"c2"`
@@ -42,6 +42,21 @@ type GenerateRequest struct {
 	LimitFileExists        string   `json:"limit_file_exists"`
 	LimitLocale            string   `json:"limit_locale"`
 	ConnectionStrategy     string   `json:"connection_strategy"`
+
+	// Shellcode packaging (honest naming — not a PE crypter)
+	SGNEnabled       bool   `json:"sgn_enabled"`
+	ShellcodeEntropy uint32 `json:"shellcode_entropy"` // Donut: 1=none 2=names 3=names+encrypt
+	ShellcodeEncoder string `json:"shellcode_encoder"` // NONE|SHIKATA_GA_NAI|XOR|XOR_DYNAMIC
+
+	// If true and a build with the same name already exists, delete it first then generate.
+	ReplaceExisting bool `json:"replace_existing"`
+
+	// DNS canary domains (FQDNs). Implant DNS lookups here mean the binary ran.
+	CanaryDomains []string `json:"canary_domains"`
+
+	// ExternalBuilderName, when set, uses GenerateExternal + BuilderTrigger
+	// (CLI `generate --external-builder`). ImplantConfig has no such field.
+	ExternalBuilderName string `json:"external_builder_name"`
 }
 
 // ImplantConfigView mirrors the relevant fields of clientpb.ImplantConfig.
@@ -62,9 +77,15 @@ type ImplantConfigView struct {
 	HTTPC2Profile          string `json:"HTTPC2ConfigName"`
 	TrafficEncodersEnabled bool   `json:"TrafficEncodersEnabled"`
 	LimitDomainJoined      bool   `json:"LimitDomainJoined"`
+	LimitHostname          string `json:"LimitHostname,omitempty"`
+	LimitUsername          string `json:"LimitUsername,omitempty"`
+	LimitDatetime          string `json:"LimitDatetime,omitempty"`
+	LimitFileExists        string `json:"LimitFileExists,omitempty"`
+	LimitLocale            string `json:"LimitLocale,omitempty"`
 	C2                     []struct {
 		URL string `json:"URL"`
 	} `json:"C2"`
+	CanaryDomains []string `json:"CanaryDomains,omitempty"`
 }
 
 // ImplantBuildView is the JSON shape for a stored implant build.
@@ -108,7 +129,13 @@ func configToView(c *clientpb.ImplantConfig, name string) *ImplantConfigView {
 		HTTPC2Profile:          c.HTTPC2ConfigName,
 		TrafficEncodersEnabled: c.TrafficEncodersEnabled,
 		LimitDomainJoined:      c.LimitDomainJoined,
+		LimitHostname:          c.LimitHostname,
+		LimitUsername:          c.LimitUsername,
+		LimitDatetime:          c.LimitDatetime,
+		LimitFileExists:        c.LimitFileExists,
+		LimitLocale:            c.LimitLocale,
 		C2:                     c2,
+		CanaryDomains:          append([]string{}, c.CanaryDomains...),
 	}
 }
 
@@ -273,6 +300,21 @@ func buildImplantConfig(req *GenerateRequest, isBeacon bool) *clientpb.ImplantCo
 		LimitDatetime:          req.LimitDatetime,
 		LimitFileExists:        req.LimitFileExists,
 		LimitLocale:            req.LimitLocale,
+		SGNEnabled:             req.SGNEnabled,
+		CanaryDomains:          normalizeCanaryDomains(req.CanaryDomains),
+	}
+	if format == clientpb.OutputFormat_SHELLCODE {
+		entropy := req.ShellcodeEntropy
+		if entropy == 0 {
+			entropy = 2 // Donut default: random names
+		}
+		cfg.ShellcodeConfig = &clientpb.ShellcodeConfig{Entropy: entropy}
+		if enc, err := parseShellcodeEncoder(req.ShellcodeEncoder); err == nil {
+			cfg.ShellcodeEncoder = enc
+			if enc == clientpb.ShellcodeEncoder_SHIKATA_GA_NAI {
+				cfg.SGNEnabled = true
+			}
+		}
 	}
 	if isBeacon {
 		cfg.BeaconInterval = req.Interval
@@ -343,30 +385,127 @@ func ensureImplantExt(name string, cfg *clientpb.ImplantConfig) string {
 	return name + implantFileExtension(cfg)
 }
 
-// GenerateImplant generates and compiles an implant.
+// GenerateImplant generates and compiles an implant on the teamserver.
 func (c *Client) GenerateImplant(req *GenerateRequest) (map[string]any, error) {
+	return c.GenerateImplantWithHub(req, nil)
+}
+
+// GenerateImplantWithHub is GenerateImplant, waiting on hub when an external builder is selected.
+func (c *Client) GenerateImplantWithHub(req *GenerateRequest, hub *EventHub) (map[string]any, error) {
 	if req.Name == "" {
 		return nil, fmt.Errorf("implant name is required")
 	}
+	if strings.TrimSpace(req.ExternalBuilderName) != "" {
+		return c.generateExternalImplant(req, hub)
+	}
 	cfg := buildImplantConfig(req, req.IsBeacon)
+
+	if req.ReplaceExisting {
+		if err := c.deleteBuildIfExists(req.Name); err != nil {
+			return nil, fmt.Errorf("replace existing: %w", err)
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	resp, err := c.RPC.Generate(ctx, &clientpb.GenerateReq{Config: cfg, Name: req.Name})
 	if err != nil {
-		return nil, err
+		return nil, mapGenerateError(req.Name, err)
 	}
+	var raw []byte
 	var data string
 	if resp.File != nil {
-		data = base64.StdEncoding.EncodeToString(resp.File.Data)
+		raw = resp.File.Data
+		data = base64.StdEncoding.EncodeToString(raw)
 	}
 	name := ensureImplantExt(resp.File.Name, cfg)
-	return map[string]any{
+	out := map[string]any{
 		"success": true,
 		"message": fmt.Sprintf("built %s (%s/%s)", name, req.OS, req.Arch),
 		"name":    name,
 		"data":    data,
-	}, nil
+	}
+	attachArtifactHash(out, name, raw)
+	return out, nil
+}
+
+func normalizeCanaryDomains(in []string) []string {
+	out := make([]string, 0, len(in))
+	seen := map[string]struct{}{}
+	for _, raw := range in {
+		for _, part := range strings.Split(raw, ",") {
+			d := strings.ToLower(strings.TrimSpace(part))
+			d = strings.TrimPrefix(d, "dns://")
+			d = strings.TrimSuffix(d, ".")
+			if d == "" {
+				continue
+			}
+			if _, ok := seen[d]; ok {
+				continue
+			}
+			seen[d] = struct{}{}
+			out = append(out, d)
+		}
+	}
+	return out
+}
+
+// deleteBuildIfExists removes a prior build so Generate can reuse the name.
+// Sliver stores the build map key without requiring an extension match; try
+// the bare name and common filename forms.
+func (c *Client) deleteBuildIfExists(name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil
+	}
+	candidates := []string{name}
+	base := strings.TrimSuffix(name, filepath.Ext(name))
+	if base != "" && base != name {
+		candidates = append(candidates, base)
+	}
+	for _, ext := range []string{".exe", ".bin", ".dll", ".so", ".dylib", ".svc"} {
+		candidates = append(candidates, base+ext)
+	}
+
+	builds, err := c.ImplantBuilds()
+	if err != nil {
+		return err
+	}
+	existing := map[string]struct{}{}
+	for _, b := range builds {
+		if b.Name != "" {
+			existing[b.Name] = struct{}{}
+		}
+	}
+	seen := map[string]struct{}{}
+	for _, cand := range candidates {
+		if _, ok := seen[cand]; ok {
+			continue
+		}
+		seen[cand] = struct{}{}
+		if _, ok := existing[cand]; !ok {
+			continue
+		}
+		if err := c.DeleteImplantBuild(cand); err != nil {
+			return fmt.Errorf("delete build %q: %w", cand, err)
+		}
+	}
+	return nil
+}
+
+func mapGenerateError(name string, err error) error {
+	if err == nil {
+		return nil
+	}
+	msg := err.Error()
+	lower := strings.ToLower(msg)
+	if strings.Contains(lower, "unique constraint") || strings.Contains(lower, "implant_builds.name") {
+		return fmt.Errorf(
+			"build name %q already exists on the Sliver server — rename the implant, enable “Replace existing”, or delete the old build and retry",
+			name,
+		)
+	}
+	return err
 }
 
 // KillSession sends a kill command to the implant.

@@ -8,6 +8,7 @@ export default function FilesPage() {
   const { t } = useTranslation()
   const [sessionId, setSessionId] = useState('')
   const [os, setOs] = useState<string | undefined>(undefined)
+  const [hostKey, setHostKey] = useState('')
 
   return (
     <div className="page">
@@ -23,11 +24,12 @@ export default function FilesPage() {
           onChange={(id, session) => {
             setSessionId(id)
             setOs(session?.OS)
+            setHostKey(session?.UUID || id)
           }}
         />
       </div>
       {sessionId ? (
-        <FilesTab key={sessionId} sessionId={sessionId} os={os} />
+        <FilesTab key={sessionId} sessionId={sessionId} os={os} hostKey={hostKey} />
       ) : (
         <div className="empty">{t('host.pickSession')}</div>
       )}

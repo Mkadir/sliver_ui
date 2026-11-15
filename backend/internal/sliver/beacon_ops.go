@@ -3,6 +3,8 @@ package sliver
 import (
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
@@ -99,30 +101,85 @@ func (c *Client) BeaconTaskContent(taskID string) (*BeaconTaskView, error) {
 	return beaconTaskToView(resp), nil
 }
 
-// ReconfigureSession changes the reconnect interval of a session (seconds).
+// ReconfigureOptions is the JSON body for session/beacon Reconfigure.
+// Interval fields are seconds in the UI and converted to nanoseconds for the implant.
+type ReconfigureOptions struct {
+	ReconnectInterval int64  `json:"reconnect_interval"`
+	BeaconInterval    int64  `json:"beacon_interval"`
+	BeaconJitter      int64  `json:"beacon_jitter"`
+	C2URI             string `json:"c2_uri"`
+}
+
+// ReconfigureSession changes reconnect interval (and optional C2 URI) of a session.
 func (c *Client) ReconfigureSession(sessionID string, reconnectSeconds int64) error {
+	_, err := c.Reconfigure(sessionID, "", ReconfigureOptions{ReconnectInterval: reconnectSeconds})
+	return err
+}
+
+// Reconfigure updates session or beacon reconnect / beacon interval / C2 URI.
+// Beacon calls are queued (Async) and return a QueuedTask.
+func (c *Client) Reconfigure(sessionID, beaconID string, opts ReconfigureOptions) (*QueuedTask, error) {
+	if strings.TrimSpace(sessionID) == "" && strings.TrimSpace(beaconID) == "" {
+		return nil, fmt.Errorf("session or beacon id is required")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	_, err := c.RPC.Reconfigure(ctx, &sliverpb.ReconfigureReq{
-		ReconnectInterval: reconnectSeconds,
-		Request:           &commonpb.Request{SessionID: sessionID},
+	resp, err := c.RPC.Reconfigure(ctx, &sliverpb.ReconfigureReq{
+		ReconnectInterval: durationSeconds(opts.ReconnectInterval),
+		BeaconInterval:    durationSeconds(opts.BeaconInterval),
+		BeaconJitter:      durationSeconds(opts.BeaconJitter),
+		C2URI:             strings.TrimSpace(opts.C2URI),
+		Request:           implantRequest(sessionID, beaconID),
 	})
-	return err
+	if err != nil {
+		return nil, err
+	}
+	if resp.GetResponse().GetErr() != "" {
+		return nil, errors.New(resp.GetResponse().GetErr())
+	}
+	if resp.GetResponse().GetAsync() {
+		return queuedTask(resp.GetResponse(), nil)
+	}
+	return nil, nil
+}
+
+// OpenSessionOptions is the JSON body for opening an interactive session from a beacon.
+type OpenSessionOptions struct {
+	DelaySeconds int64    `json:"delay"`
+	C2S          []string `json:"c2s"`
 }
 
 // OpenSessionFromBeacon instructs a beacon to open a new interactive session
 // on its next check-in. Returns true when the request was queued asynchronously
 // (beacon mode); the new session then appears in the session list on check-in.
 func (c *Client) OpenSessionFromBeacon(beaconID string) (bool, error) {
+	return c.OpenSessionFromBeaconOpts(beaconID, OpenSessionOptions{})
+}
+
+// OpenSessionFromBeaconOpts is OpenSessionFromBeacon with optional delay and C2 URLs.
+func (c *Client) OpenSessionFromBeaconOpts(beaconID string, opts OpenSessionOptions) (bool, error) {
+	if err := requireBeaconID(beaconID); err != nil {
+		return false, err
+	}
+	c2s := make([]string, 0, len(opts.C2S))
+	for _, u := range opts.C2S {
+		u = strings.TrimSpace(u)
+		if u != "" {
+			c2s = append(c2s, u)
+		}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	resp, err := c.RPC.OpenSession(ctx, &sliverpb.OpenSession{
-		C2S:     []string{},
-		Delay:   0,
-		Request: &commonpb.Request{BeaconID: beaconID},
+		C2S:     c2s,
+		Delay:   durationSeconds(opts.DelaySeconds),
+		Request: implantRequest("", beaconID),
 	})
 	if err != nil {
 		return false, err
+	}
+	if resp.GetResponse().GetErr() != "" {
+		return false, errors.New(resp.GetResponse().GetErr())
 	}
 	return resp.GetResponse().GetAsync(), nil
 }
@@ -156,5 +213,88 @@ func (c *Client) MonitorStop() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	_, err := c.RPC.MonitorStop(ctx, &commonpb.Empty{})
+	return err
+}
+
+func requireBeaconID(beaconID string) error {
+	if beaconID == "" {
+		return fmt.Errorf("beacon id is required")
+	}
+	return nil
+}
+
+// BeaconExecute queues an execute task on a beacon.
+func (c *Client) BeaconExecute(beaconID, path string, args []string) (*QueuedTask, error) {
+	if err := requireBeaconID(beaconID); err != nil {
+		return nil, err
+	}
+	if path == "" {
+		return nil, fmt.Errorf("path is required")
+	}
+	if args == nil {
+		args = []string{}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	resp, err := c.RPC.Execute(ctx, &sliverpb.ExecuteReq{
+		Path:    path,
+		Args:    args,
+		Output:  true,
+		Request: implantRequest("", beaconID),
+	})
+	return queuedTask(resp.GetResponse(), err)
+}
+
+// BeaconPs queues a process listing on a beacon.
+func (c *Client) BeaconPs(beaconID string) (*QueuedTask, error) {
+	if err := requireBeaconID(beaconID); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	resp, err := c.RPC.Ps(ctx, &sliverpb.PsReq{
+		Request: implantRequest("", beaconID),
+	})
+	return queuedTask(resp.GetResponse(), err)
+}
+
+// BeaconLs queues a directory listing on a beacon.
+func (c *Client) BeaconLs(beaconID, path string) (*QueuedTask, error) {
+	if err := requireBeaconID(beaconID); err != nil {
+		return nil, err
+	}
+	if path == "" {
+		path = "."
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	resp, err := c.RPC.Ls(ctx, &sliverpb.LsReq{
+		Path:    path,
+		Request: implantRequest("", beaconID),
+	})
+	return queuedTask(resp.GetResponse(), err)
+}
+
+// BeaconScreenshot queues a screenshot on a beacon.
+func (c *Client) BeaconScreenshot(beaconID string) (*QueuedTask, error) {
+	if err := requireBeaconID(beaconID); err != nil {
+		return nil, err
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	resp, err := c.RPC.Screenshot(ctx, &sliverpb.ScreenshotReq{
+		Request: implantRequest("", beaconID),
+	})
+	return queuedTask(resp.GetResponse(), err)
+}
+
+// CancelBeaconTask cancels a pending beacon task before the implant picks it up.
+func (c *Client) CancelBeaconTask(taskID string) error {
+	if taskID == "" {
+		return fmt.Errorf("task id is required")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_, err := c.RPC.CancelBeaconTask(ctx, &clientpb.BeaconTask{ID: taskID})
 	return err
 }

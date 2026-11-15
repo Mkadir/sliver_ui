@@ -15,6 +15,13 @@ func encodeBase64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
 }
 
+func decodeOptionalB64(s string) ([]byte, error) {
+	if s == "" {
+		return nil, nil
+	}
+	return base64.StdEncoding.DecodeString(s)
+}
+
 // IfaceView is the JSON shape for a network interface.
 type IfaceView struct {
 	Index       int32    `json:"Index"`

@@ -22,6 +22,7 @@ export interface Session {
 export interface Beacon {
   ID: string
   Name: string
+  UUID?: string
   Hostname: string
   Username: string
   OS: string
@@ -99,6 +100,82 @@ export interface ImplantConfig {
   limit_file_exists?: string
   limit_locale?: string
   connection_strategy?: string
+  is_beacon?: boolean
+  /** Polymorphic shellcode encoder at generate (shellcode format only). */
+  sgn_enabled?: boolean
+  /** Donut entropy: 1=none, 2=names, 3=names+encrypt (Windows shellcode). */
+  shellcode_entropy?: number
+  /** NONE | SHIKATA_GA_NAI | XOR | XOR_DYNAMIC */
+  shellcode_encoder?: string
+  /** Delete same-named build on the server before generate. */
+  replace_existing?: boolean
+  /** DNS canary FQDNs registered on generate. */
+  canary_domains?: string[]
+  /** CLI `generate --external-builder` — RPC GenerateExternal, not an ImplantConfig field. */
+  external_builder_name?: string
+}
+
+export interface ShellcodeEncoderArch {
+  arch: string
+  encoders: Record<string, number>
+  descriptions?: Record<string, string>
+}
+
+export interface ShellcodeEncodeResult {
+  data_b64: string
+  size: number
+  encoder: string
+  arch: string
+}
+
+export interface StageGenerateResult {
+  filename: string
+  data_b64: string
+  size: number
+  profile: string
+  encrypted: boolean
+  compress?: string
+  aes_key?: string
+  aes_iv?: string
+  rc4_key?: string
+  implant_name?: string
+  prepend_size: boolean
+}
+
+export interface LoaderBuildResult {
+  filename: string
+  data_b64: string
+  size: number
+  os: string
+  arch: string
+  hide_console: boolean
+  persistence: string
+  rdi: boolean
+  payload_size: number
+}
+
+export interface StageListenerResult {
+  job_id: number
+  host: string
+  port: number
+  profile: string
+  aes_key?: string
+  aes_iv?: string
+  rc4_key?: string
+  payload_size: number
+}
+
+export interface StageListenerView {
+  job_id: number
+  name: string
+  protocol: string
+  port: number
+  is_stage: boolean
+}
+
+export interface HTTPC2Fingerprint {
+  looks_default: boolean
+  reasons: string[]
 }
 
 export interface HTTPC2Profile {
@@ -107,11 +184,52 @@ export interface HTTPC2Profile {
   server_config?: Record<string, unknown>
   implant_config?: Record<string, unknown>
   raw?: unknown
+  looks_default?: boolean
+  fingerprint?: HTTPC2Fingerprint
+}
+
+export interface ExternalBuilder {
+  name: string
+  operator_name: string
+  goos: string
+  goarch: string
+  templates: string[]
+  targets: string[]
+}
+
+export interface ArmoryPackage {
+  name: string
+  command_name: string
+  repo_url: string
+  public_key: string
+  kind: 'alias' | 'extension' | string
+}
+
+export interface ArmoryIndex {
+  source: string
+  fetched_at: number
+  packages: ArmoryPackage[]
 }
 
 export interface TrafficEncoder {
   name: string
   id: number
+}
+
+export interface TrafficEncoderTest {
+  name: string
+  completed: boolean
+  success: boolean
+  duration: number
+  err?: string
+}
+
+export interface TrafficEncoderAddResult {
+  name: string
+  passed: boolean
+  total_tests: number
+  total_duration: number
+  tests: TrafficEncoderTest[]
 }
 
 export interface ImplantBuild {
@@ -142,6 +260,23 @@ export interface LootEntry {
   CredUser?: string
   CredPassword?: string
   CredAPIKey?: string
+}
+
+export interface LootReport {
+  generated_at: string
+  loot: {
+    id: string
+    name: string
+    loot_type: string
+    file_type?: string
+    file?: string
+    size?: number
+    cred_user?: string
+    has_cred?: boolean
+  }[]
+  canaries: Canary[]
+  hosts: Host[]
+  implants: { name: string; os: string; arch: string; sha256?: string }[]
 }
 
 export interface CompilerTarget {
@@ -215,6 +350,11 @@ export interface Operator {
   CanCleanup: boolean
 }
 
+export interface OperatorPresence {
+  name: string
+  online: boolean
+}
+
 export interface Canary {
   ImplantName: string
   Domain: string
@@ -250,6 +390,10 @@ export interface GenerateResult {
   path?: string
   name?: string
   data?: string
+  sha256?: string
+  collision_with?: string
+  pending?: boolean
+  build_id?: string
 }
 
 export interface FileInfo {
@@ -369,6 +513,69 @@ export interface PortForward {
   SessionID: string
 }
 
+export interface RportFwdListener {
+  ID: number
+  BindAddress: string
+  BindPort: number
+  ForwardAddress: string
+  ForwardPort: number
+}
+
+export interface WasmExecResult {
+  success: boolean
+  name: string
+  stdout?: string
+  stderr?: string
+  exit_code: number
+  loot_id?: string
+  pipe?: boolean
+  warning?: string
+  async?: boolean
+  task_id?: string
+  beacon_id?: string
+}
+
+export interface OperatorNote {
+  uuid: string
+  kind: string
+  tags: string[]
+  comment: string
+  campaign: string
+  updated_at: string
+}
+
+export interface OperatorLock {
+  session_id: string
+  user: string
+  operator: string
+  since: string
+}
+
+export interface OperatorReaction {
+  id: number
+  event_type: string
+  commands: string[]
+}
+
+export interface OperatorAuditEntry {
+  time: string
+  user: string
+  operator: string
+  method: string
+  path: string
+  action: string
+  status: number
+}
+
+export interface OperatorReactionHit {
+  time: string
+  event_type: string
+  command: string
+  target: string
+  result: string
+  skipped?: boolean
+}
+
 export interface BeaconTask {
   ID: string
   BeaconID: string
@@ -378,6 +585,13 @@ export interface BeaconTask {
   CompletedAt: number
   Description: string
   ResponseB64?: string
+}
+
+export interface QueuedTask {
+  success?: boolean
+  async: boolean
+  task_id: string
+  beacon_id?: string
 }
 
 export interface SocksProxy {
@@ -398,6 +612,11 @@ export interface ImplantConfigView {
   HTTPC2ConfigName?: string
   TrafficEncodersEnabled?: boolean
   LimitDomainJoined?: boolean
+  LimitHostname?: string
+  LimitUsername?: string
+  LimitDatetime?: string
+  LimitFileExists?: string
+  LimitLocale?: string
 
   Name: string
   OS: string
@@ -413,6 +632,7 @@ export interface ImplantConfigView {
   BeaconInterval: number
   BeaconJitter: number
   C2: { URL: string }[]
+  CanaryDomains?: string[]
 }
 
 export interface Alias {

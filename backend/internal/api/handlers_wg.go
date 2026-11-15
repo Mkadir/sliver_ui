@@ -133,4 +133,3 @@ func (s *Server) handleWGStopSocks(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"server": server, "async": async})
 }
-
