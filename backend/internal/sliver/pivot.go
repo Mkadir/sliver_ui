@@ -8,7 +8,7 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // NetConnPivotView is the JSON shape of a single pivot peer connection.
@@ -25,31 +25,31 @@ type PivotListenerView struct {
 	Pivots      []NetConnPivotView `json:"Pivots"`
 }
 
-func pivotTypeString(t sliverpb.PivotType) string {
+func pivotTypeString(t cpmfczjv.HkbctLqhw) string {
 	switch t {
-	case sliverpb.PivotType_TCP:
+	case cpmfczjv.PivotType_TCP:
 		return "TCP"
-	case sliverpb.PivotType_UDP:
+	case cpmfczjv.PivotType_UDP:
 		return "UDP"
-	case sliverpb.PivotType_NamedPipe:
+	case cpmfczjv.PivotType_NamedPipe:
 		return "NamedPipe"
 	default:
 		return "TCP"
 	}
 }
 
-func pivotTypeFromString(s string) sliverpb.PivotType {
+func pivotTypeFromString(s string) cpmfczjv.HkbctLqhw {
 	switch strings.ToLower(s) {
 	case "udp":
-		return sliverpb.PivotType_UDP
+		return cpmfczjv.PivotType_UDP
 	case "namedpipe", "named-pipe", "pipe":
-		return sliverpb.PivotType_NamedPipe
+		return cpmfczjv.PivotType_NamedPipe
 	default:
-		return sliverpb.PivotType_TCP
+		return cpmfczjv.PivotType_TCP
 	}
 }
 
-func pivotListenerToView(l *sliverpb.PivotListener) PivotListenerView {
+func pivotListenerToView(l *cpmfczjv.HkbctJaenolez) PivotListenerView {
 	v := PivotListenerView{Type: "TCP"}
 	if l == nil {
 		return v
@@ -74,7 +74,7 @@ func pivotListenerToView(l *sliverpb.PivotListener) PivotListenerView {
 func (c *Client) PivotSessionListeners(sessionID string) ([]PivotListenerView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	resp, err := c.RPC.PivotSessionListeners(ctx, &sliverpb.PivotListenersReq{
+	resp, err := c.RPC.PivotSessionListeners(ctx, &cpmfczjv.HkbctJaenolezgNkk{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -94,7 +94,7 @@ func (c *Client) PivotSessionListeners(sessionID string) ([]PivotListenerView, e
 func (c *Client) PivotStartListener(sessionID, pivotType, bindAddress string) (PivotListenerView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	resp, err := c.RPC.PivotStartListener(ctx, &sliverpb.PivotStartListenerReq{
+	resp, err := c.RPC.PivotStartListener(ctx, &cpmfczjv.HkbctEnwlzDaynerebBgy{
 		Type:        pivotTypeFromString(pivotType),
 		BindAddress: bindAddress,
 		Request:     &commonpb.Request{SessionID: sessionID},
@@ -112,7 +112,7 @@ func (c *Client) PivotStartListener(sessionID, pivotType, bindAddress string) (P
 func (c *Client) PivotStopListener(sessionID string, id uint32) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	_, err := c.RPC.PivotStopListener(ctx, &sliverpb.PivotStopListenerReq{
+	_, err := c.RPC.PivotStopListener(ctx, &cpmfczjv.HkbctEnijNeqbczknHya{
 		ID:      id,
 		Request: &commonpb.Request{SessionID: sessionID},
 	})

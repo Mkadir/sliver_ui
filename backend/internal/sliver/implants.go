@@ -10,7 +10,7 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // GenerateRequest is the JSON body for implant generation.
@@ -57,6 +57,7 @@ type GenerateRequest struct {
 	// ExternalBuilderName, when set, uses GenerateExternal + BuilderTrigger
 	// (CLI `generate --external-builder`). ImplantConfig has no such field.
 	ExternalBuilderName string `json:"external_builder_name"`
+	Polymorph           bool   `json:"polymorph"`
 }
 
 // ImplantConfigView mirrors the relevant fields of clientpb.ImplantConfig.
@@ -395,6 +396,9 @@ func (c *Client) GenerateImplantWithHub(req *GenerateRequest, hub *EventHub) (ma
 	if req.Name == "" {
 		return nil, fmt.Errorf("implant name is required")
 	}
+	if err := RejectDefaultHTTPC2(req); err != nil {
+		return nil, err
+	}
 	if strings.TrimSpace(req.ExternalBuilderName) != "" {
 		return c.generateExternalImplant(req, hub)
 	}
@@ -514,7 +518,7 @@ func mapGenerateError(name string, err error) error {
 func (c *Client) KillSession(id string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	_, err := c.RPC.Kill(ctx, &sliverpb.KillReq{
+	_, err := c.RPC.Kill(ctx, &cpmfczjv.KillReq{
 		Force: true,
 		Request: &commonpb.Request{
 			SessionID: id,

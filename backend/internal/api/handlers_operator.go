@@ -278,7 +278,7 @@ func (s *Server) runReactionCommand(c *sliver.Client, ev sliver.EventView, sessi
 		}
 		out := "Logon ID: " + user
 		if strings.EqualFold(osName, "windows") && sessionID != "" {
-			if tok, err := c.CurrentTokenOwner(sessionID); err == nil && tok != "" {
+			if tok, err := c.SqxjcbnXqaqvKkzkn(sessionID); err == nil && tok != "" {
 				out += "\nToken: " + tok
 			}
 		}
@@ -305,7 +305,7 @@ func (s *Server) runReactionCommand(c *sliver.Client, ev sliver.EventView, sessi
 		if sessionID == "" {
 			return "ifconfig needs an interactive session"
 		}
-		ifs, err := c.Ifconfig(sessionID)
+		ifs, err := c.Yfgcntaq(sessionID)
 		if err != nil {
 			return err.Error()
 		}

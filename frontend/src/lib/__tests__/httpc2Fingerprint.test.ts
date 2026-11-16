@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { analyzeHTTPC2Fingerprint, fingerprintHttpC2Doc } from '../httpc2Fingerprint'
+import { HTTP_C2_TEMPLATES, PREFERRED_HTTP_C2_PROFILE } from '../httpC2Templates'
 
 describe('analyzeHTTPC2Fingerprint', () => {
   it('flags classic default extensions + nonce 1', () => {
@@ -24,6 +25,14 @@ describe('analyzeHTTPC2Fingerprint', () => {
       'Microsoft-Delivery-Optimization/10.0',
       ['do-session'],
     )
+    expect(fp.looks_default).toBe(false)
+  })
+})
+
+describe('HTTP_C2_TEMPLATES', () => {
+  it('ms-update is the preferred generate profile and is not default-like', () => {
+    expect(PREFERRED_HTTP_C2_PROFILE).toBe('ms-update')
+    const fp = fingerprintHttpC2Doc(HTTP_C2_TEMPLATES['ms-update'])
     expect(fp.looks_default).toBe(false)
   })
 })

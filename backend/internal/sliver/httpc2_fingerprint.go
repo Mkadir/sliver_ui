@@ -1,6 +1,13 @@
 package sliver
 
-import "strings"
+import (
+	"errors"
+	"strings"
+)
+
+// ErrDefaultHTTPC2 is returned when HTTP(S) generate still uses the public
+// default URI fingerprint (name "default" or empty).
+var ErrDefaultHTTPC2 = errors.New("http/https generate requires a non-default HTTP C2 profile")
 
 // Default HTTP C2 IOCs from Sliver's own HTTPS C2 docs and the 1.7.3
 // GenerateDefaultHTTPC2Config snapshot: stager .woff, poll .js, session
@@ -72,4 +79,30 @@ func AnalyzeHTTPC2Fingerprint(name string, extensions []string, nonce int32, use
 		looks = true
 	}
 	return HTTPC2Fingerprint{LooksDefault: looks, Reasons: reasons}
+}
+
+func c2UsesHTTP(req *GenerateRequest) bool {
+	if req == nil {
+		return false
+	}
+	for _, c := range req.C2 {
+		p := strings.ToLower(strings.TrimSpace(c.Protocol))
+		if p == "http" || p == "https" {
+			return true
+		}
+	}
+	return false
+}
+
+// RejectDefaultHTTPC2 blocks HTTP(S) implants that still use the stock
+// "default" profile (public .woff/.js/.php fingerprint).
+func RejectDefaultHTTPC2(req *GenerateRequest) error {
+	if !c2UsesHTTP(req) {
+		return nil
+	}
+	name := strings.TrimSpace(req.HTTPC2Profile)
+	if name == "" || strings.EqualFold(name, "default") {
+		return ErrDefaultHTTPC2
+	}
+	return nil
 }

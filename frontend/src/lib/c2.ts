@@ -33,6 +33,14 @@ export function defaultC2Port(proto: string): string {
   return DEFAULT_C2_PORT[proto.toLowerCase()] || ''
 }
 
+/** True when the port field is still a protocol default (or the old mtls 8888 leftover). */
+export function isUnsetC2Port(port: string, proto: string): boolean {
+  const p = port.trim()
+  if (!p) return true
+  if (p === defaultC2Port(proto)) return true
+  return p === '8888'
+}
+
 function jobNamesForProto(proto: string): string[] {
   switch (proto.toLowerCase()) {
     case 'https':

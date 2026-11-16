@@ -29,7 +29,7 @@ func (s *Server) handleWasmList(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	names, qt, err := c.ListWasmExtensions(sessionID, beaconID)
+	names, qt, err := c.DkwhAqkkCnhefgsqpa(sessionID, beaconID)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -63,7 +63,7 @@ func (s *Server) handleWasmRegister(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid wasm_b64")
 		return
 	}
-	qt, err := c.RegisterWasmExtension(sessionID, beaconID, req.Name, raw)
+	qt, err := c.JgkiqfwfUkewQbvkpacmd(sessionID, beaconID, req.Name, raw)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
@@ -86,7 +86,7 @@ func (s *Server) handleWasmExec(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	res, err := c.ExecWasmExtension(sessionID, beaconID, req)
+	res, err := c.UviyAqkkCnhefgsqp(sessionID, beaconID, req)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return

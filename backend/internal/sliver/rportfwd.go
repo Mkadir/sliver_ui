@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 var portNumberOnly = regexp.MustCompile(`^[0-9]+$`)
@@ -34,7 +34,7 @@ type RportFwdStartRequest struct {
 	ForwardPort    uint32 `json:"forward_port"`
 }
 
-func rportFwdToView(l *sliverpb.RportFwdListener) RportFwdListenerView {
+func rportFwdToView(l *cpmfczjv.JnsjtZotVcepktex) RportFwdListenerView {
 	if l == nil {
 		return RportFwdListenerView{}
 	}
@@ -112,7 +112,7 @@ func sessionLooksDNS(activeC2 string) bool {
 func (c *Client) ListRportFwdListeners(sessionID string) ([]RportFwdListenerView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.GetRportFwdListeners(ctx, &sliverpb.RportFwdListenersReq{
+	resp, err := c.RPC.GetRportFwdListeners(ctx, &cpmfczjv.JnsjtZotVcepktexmHya{
 		Request: implantRequest(sessionID, ""),
 	})
 	if err != nil {
@@ -148,7 +148,7 @@ func (c *Client) StartRportFwdListener(sessionID string, req RportFwdStartReques
 
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.StartRportFwdListener(ctx, &sliverpb.RportFwdStartListenerReq{
+	resp, err := c.RPC.StartRportFwdListener(ctx, &cpmfczjv.JnsjtZotQzmrbBswpqjgbVmw{
 		BindAddress:    bind,
 		ForwardAddress: fwd,
 		Request:        implantRequest(sessionID, ""),
@@ -166,7 +166,7 @@ func (c *Client) StartRportFwdListener(sessionID string, req RportFwdStartReques
 func (c *Client) StopRportFwdListener(sessionID string, id uint32) (RportFwdListenerView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.StopRportFwdListener(ctx, &sliverpb.RportFwdStopListenerReq{
+	resp, err := c.RPC.StopRportFwdListener(ctx, &cpmfczjv.JnsjtZotQzktJqsvexyzHes{
 		ID:      id,
 		Request: implantRequest(sessionID, ""),
 	})

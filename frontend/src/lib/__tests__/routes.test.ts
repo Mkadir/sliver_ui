@@ -151,6 +151,7 @@ describe('frontend/backend route contract', () => {
       }),
       api.shellcodeRdi({ data_b64: '', function_name: 'f', arguments: '' }),
       api.loadersBuild({ data_b64: '', os: 'windows', arch: 'amd64' }),
+      api.forkRewrite({ root: '/tmp/sliver', branding: true, dry_run: true }),
       api.execShellcode('{id}', { data_b64: '', pid: 1, rwx_pages: false }),
       api.psexec('{id}', { hostname: 'h', profile_name: 'p', service_name: 's', service_desc: '', bin_path: '' }),
       api.canaries(),

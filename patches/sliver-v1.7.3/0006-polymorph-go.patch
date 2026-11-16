@@ -1,0 +1,59 @@
+diff --git a/server/generate/polymorph.go b/server/generate/polymorph.go
+new file mode 100644
+index 0000000..3888a97
+--- /dev/null
++++ b/server/generate/polymorph.go
+@@ -0,0 +1,53 @@
++package generate
++
++import (
++	"crypto/rand"
++	"fmt"
++
++	"github.com/bishopfox/sliver/protobuf/clientpb"
++	"golang.org/x/mod/module"
++)
++
++const exportAlphabet = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
++
++// PolymorphConfig mutates a generate request so each implant compile is a
++// different shape: garble on, unique Go module path, unique shared-lib export.
++// Protobuf RPC names are unchanged (wire protocol).
++func PolymorphConfig(config *clientpb.ImplantConfig) {
++	if config == nil {
++		return
++	}
++	if !config.Debug {
++		config.ObfuscateSymbols = true
++	}
++	if config.GoPackage == "" {
++		pkg := fmt.Sprintf("github.com/%s/%s", randomIdent(8), randomIdent(8))
++		if err := module.CheckPath(pkg); err == nil {
++			config.GoPackage = pkg
++		}
++	}
++	if len(config.Exports) == 0 || (len(config.Exports) == 1 && config.Exports[0] == "StartW") {
++		config.Exports = []string{randomIdent(8)}
++	}
++}
++
++func randomIdent(n int) string {
++	if n < 1 {
++		n = 8
++	}
++	b := make([]byte, n)
++	if _, err := rand.Read(b); err != nil {
++		for i := range b {
++			b[i] = exportAlphabet[i%len(exportAlphabet)]
++		}
++		return string(b)
++	}
++	for i := range b {
++		b[i] = exportAlphabet[int(b[i])%len(exportAlphabet)]
++	}
++	return string(b)
++}
++
++func randomPathSeg() string {
++	return randomIdent(6)
++}

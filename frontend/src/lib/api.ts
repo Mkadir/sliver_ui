@@ -666,6 +666,19 @@ export const api = {
       body: JSON.stringify(opts),
     }),
 
+  forkRewrite: (opts: {
+    root: string
+    new_module?: string
+    branding?: boolean
+    proto?: boolean
+    generator?: boolean
+    dry_run?: boolean
+  }) =>
+    request<import('./types').ForkRewriteResult>('/fork/rewrite', {
+      method: 'POST',
+      body: JSON.stringify(opts),
+    }),
+
   loadersBuild: (opts: {
     data_b64: string
     os: string

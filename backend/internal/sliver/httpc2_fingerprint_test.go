@@ -32,3 +32,31 @@ func TestAnalyzeHTTPC2FingerprintJquery(t *testing.T) {
 		t.Fatalf("jquery-cdn flagged as default: %v", fp.Reasons)
 	}
 }
+
+func TestRejectDefaultHTTPC2(t *testing.T) {
+	c2 := func(proto string) []struct {
+		Address  string `json:"address"`
+		Protocol string `json:"protocol"`
+	} {
+		return []struct {
+			Address  string `json:"address"`
+			Protocol string `json:"protocol"`
+		}{{Address: "h:1", Protocol: proto}}
+	}
+	https := GenerateRequest{HTTPC2Profile: "default", C2: c2("https")}
+	if err := RejectDefaultHTTPC2(&https); err != ErrDefaultHTTPC2 {
+		t.Fatalf("default https: %v", err)
+	}
+	https.HTTPC2Profile = ""
+	if err := RejectDefaultHTTPC2(&https); err != ErrDefaultHTTPC2 {
+		t.Fatalf("empty https: %v", err)
+	}
+	https.HTTPC2Profile = "ms-update"
+	if err := RejectDefaultHTTPC2(&https); err != nil {
+		t.Fatalf("ms-update: %v", err)
+	}
+	mtls := GenerateRequest{HTTPC2Profile: "", C2: c2("mtls")}
+	if err := RejectDefaultHTTPC2(&mtls); err != nil {
+		t.Fatalf("mtls empty profile: %v", err)
+	}
+}

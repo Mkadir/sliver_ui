@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // WGTCPForwarderView is the JSON shape of a WireGuard TCP forwarder.
@@ -30,7 +30,7 @@ type WGClientConfigView struct {
 	ClientIP         string `json:"ClientIP"`
 }
 
-func wgForwarderToView(f *sliverpb.WGTCPForwarder) WGTCPForwarderView {
+func wgForwarderToView(f *cpmfczjv.MKTSVZgfokffkh) WGTCPForwarderView {
 	v := WGTCPForwarderView{}
 	if f == nil {
 		return v
@@ -41,7 +41,7 @@ func wgForwarderToView(f *sliverpb.WGTCPForwarder) WGTCPForwarderView {
 	return v
 }
 
-func wgSocksToView(s *sliverpb.WGSocksServer) WGSocksServerView {
+func wgSocksToView(s *cpmfczjv.MKQcawkYwtjez) WGSocksServerView {
 	v := WGSocksServerView{}
 	if s == nil {
 		return v
@@ -88,7 +88,7 @@ func (c *Client) GenerateUniqueIP() (string, error) {
 func (c *Client) WGForwarders(sessionID string) ([]WGTCPForwarderView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.WGListForwarders(ctx, &sliverpb.WGTCPForwardersReq{
+	resp, err := c.RPC.WGListForwarders(ctx, &cpmfczjv.MKTSVZgfokffkhsRec{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -108,7 +108,7 @@ func (c *Client) WGForwarders(sessionID string) ([]WGTCPForwarderView, error) {
 func (c *Client) WGStartPortForward(sessionID string, localPort int32, remoteAddress string) (WGTCPForwarderView, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.WGStartPortForward(ctx, &sliverpb.WGPortForwardStartReq{
+	resp, err := c.RPC.WGStartPortForward(ctx, &cpmfczjv.MKPcrfTilwmrlMvonhBgy{
 		LocalPort:     localPort,
 		RemoteAddress: remoteAddress,
 		Request:       &commonpb.Request{SessionID: sessionID},
@@ -126,7 +126,7 @@ func (c *Client) WGStartPortForward(sessionID string, localPort int32, remoteAdd
 func (c *Client) WGStopPortForward(sessionID string, id int32) (WGTCPForwarderView, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.WGStopPortForward(ctx, &sliverpb.WGPortForwardStopReq{
+	resp, err := c.RPC.WGStopPortForward(ctx, &cpmfczjv.MKPcrfTilwmrlMvqlHya{
 		ID:      id,
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
@@ -139,11 +139,11 @@ func (c *Client) WGStopPortForward(sessionID string, id int32) (WGTCPForwarderVi
 	return wgForwarderToView(resp.Forwarder), resp.GetResponse().GetAsync(), nil
 }
 
-// WGSocksServers lists the SOCKS5 servers of a session's WireGuard interface.
-func (c *Client) WGSocksServers(sessionID string) ([]WGSocksServerView, error) {
+// MKQcawkYwtjezg lists the SOCKS5 servers of a session's WireGuard interface.
+func (c *Client) MKQcawkYwtjezg(sessionID string) ([]WGSocksServerView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.WGListSocksServers(ctx, &sliverpb.WGSocksServersReq{
+	resp, err := c.RPC.WGListSocksServers(ctx, &cpmfczjv.MKQcawkYwtjezgNkk{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -163,7 +163,7 @@ func (c *Client) WGSocksServers(sessionID string) ([]WGSocksServerView, error) {
 func (c *Client) WGStartSocks(sessionID string, port int32) (WGSocksServerView, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.WGStartSocks(ctx, &sliverpb.WGSocksStartReq{
+	resp, err := c.RPC.WGStartSocks(ctx, &cpmfczjv.MKQcawkYnkfpFcq{
 		Port:    port,
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
@@ -180,7 +180,7 @@ func (c *Client) WGStartSocks(sessionID string, port int32) (WGSocksServerView, 
 func (c *Client) WGStopSocks(sessionID string, id int32) (WGSocksServerView, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	resp, err := c.RPC.WGStopSocks(ctx, &sliverpb.WGSocksStopReq{
+	resp, err := c.RPC.WGStopSocks(ctx, &cpmfczjv.MKQcawkYnedLki{
 		ID:      id,
 		Request: &commonpb.Request{SessionID: sessionID},
 	})

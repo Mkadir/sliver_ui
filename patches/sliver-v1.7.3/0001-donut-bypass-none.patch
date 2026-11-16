@@ -1,0 +1,13 @@
+diff --git a/server/generate/donut.go b/server/generate/donut.go
+index 6d79102..b558988 100644
+--- a/server/generate/donut.go
++++ b/server/generate/donut.go
+@@ -14,7 +14,7 @@ const (
+ 	defaultDonutEntropy  = wasmdonut.DonutEntropyNone
+ 	defaultDonutCompress = wasmdonut.DonutCompressNone
+ 	defaultDonutExitOpt  = wasmdonut.DonutExitThread
+-	defaultDonutBypass   = wasmdonut.DonutBypassContinue
++	defaultDonutBypass   = 1 // none; Continue (3) is Win32/AMSI_Patch
+ 	defaultDonutHeaders  = wasmdonut.DonutHeadersOverwrite
+ )
+ 

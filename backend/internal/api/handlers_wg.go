@@ -89,7 +89,7 @@ func (s *Server) handleWGSocksServers(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	servers, err := c.WGSocksServers(id)
+	servers, err := c.MKQcawkYwtjezg(id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

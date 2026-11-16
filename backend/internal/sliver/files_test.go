@@ -3,14 +3,14 @@ package sliver
 import (
 	"testing"
 
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 func TestDirToView_SortsDirsFirst(t *testing.T) {
-	d := dirToView(&sliverpb.Ls{
+	d := dirToView(&cpmfczjv.Ls{
 		Path:   "/tmp",
 		Exists: true,
-		Files: []*sliverpb.FileInfo{
+		Files: []*cpmfczjv.FileInfo{
 			{Name: "zeta.txt", IsDir: false, Size: 10},
 			{Name: "alpha", IsDir: true},
 			{Name: "beta.txt", IsDir: false},
@@ -35,8 +35,8 @@ func TestDirToView_HandlesNil(t *testing.T) {
 }
 
 func TestDirToView_SkipsNilFiles(t *testing.T) {
-	d := dirToView(&sliverpb.Ls{
-		Files: []*sliverpb.FileInfo{nil, {Name: "ok.txt", IsDir: false}},
+	d := dirToView(&cpmfczjv.Ls{
+		Files: []*cpmfczjv.FileInfo{nil, {Name: "ok.txt", IsDir: false}},
 	})
 	if len(d.Files) != 1 || d.Files[0].Name != "ok.txt" {
 		t.Fatalf("unexpected files: %+v", d.Files)

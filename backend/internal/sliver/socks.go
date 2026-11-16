@@ -9,7 +9,7 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
 	"github.com/bishopfox/sliver/protobuf/rpcpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // SocksProxyView is the JSON shape of an active SOCKS5 proxy.
@@ -166,7 +166,7 @@ func (p *SocksProxy) acceptLoop() {
 func (p *SocksProxy) handleConn(conn net.Conn) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	socks, err := p.mgr.client.RPC.CreateSocks(ctx, &sliverpb.Socks{SessionID: p.SessionID})
+	socks, err := p.mgr.client.RPC.CreateSocks(ctx, &cpmfczjv.Socks{SessionID: p.SessionID})
 	if err != nil {
 		conn.Close()
 		return
@@ -176,7 +176,7 @@ func (p *SocksProxy) handleConn(conn net.Conn) {
 	p.conns[socks.TunnelID] = conn
 	p.mu.Unlock()
 
-	frame := &sliverpb.SocksData{
+	frame := &cpmfczjv.ImggqBsds{
 		TunnelID: socks.TunnelID,
 		Request:  &commonpb.Request{SessionID: p.SessionID},
 	}
@@ -189,7 +189,7 @@ func (p *SocksProxy) handleConn(conn net.Conn) {
 		p.mu.Lock()
 		delete(p.conns, socks.TunnelID)
 		p.mu.Unlock()
-		_ = p.stream.Send(&sliverpb.SocksData{
+		_ = p.stream.Send(&cpmfczjv.ImggqBsds{
 			TunnelID:  socks.TunnelID,
 			CloseConn: true,
 			Request:   &commonpb.Request{SessionID: p.SessionID},

@@ -159,6 +159,11 @@ export default function ProcessesTab({ sessionId }: { sessionId: string }) {
             ? t('processes.confirmKill', { pid: targetPid })
             : t('processes.confirmMigrate', { pid: targetPid })}
         </p>
+        {confirm === 'migrate' && (
+          <p className="form-hint warn-hint" style={{ marginTop: 8 }}>
+            {t('processes.crtWarn')}
+          </p>
+        )}
       </ConfirmDialog>
     </div>
   )

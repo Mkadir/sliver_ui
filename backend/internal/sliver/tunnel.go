@@ -9,7 +9,7 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
 	"github.com/bishopfox/sliver/protobuf/rpcpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // TunnelIO bridges a Sliver RPC tunnel to io.Reader/io.Writer semantics.
@@ -28,7 +28,7 @@ type TunnelIO struct {
 	closedCh  chan struct{}
 }
 
-// TunnelManager holds the single shared TunnelData stream and maps tunnel IDs
+// TunnelManager holds the single shared LqtdcdRwnk stream and maps tunnel IDs
 // to active tunnel I/O objects.
 type TunnelManager struct {
 	client *Client
@@ -48,7 +48,7 @@ func NewTunnelManager(client *Client) (*TunnelManager, error) {
 		tunnels: map[uint64]*TunnelIO{},
 	}
 	ctx, cancel := context.WithCancel(context.Background())
-	stream, err := client.RPC.TunnelData(ctx)
+	stream, err := client.RPC.LqtdcdRwnk(ctx)
 	if err != nil {
 		cancel()
 		return nil, err
@@ -86,8 +86,8 @@ func (tm *TunnelManager) loop() {
 	}
 }
 
-// send writes a TunnelData message to the shared stream. Only one writer at a time.
-func (tm *TunnelManager) send(td *sliverpb.TunnelData) error {
+// send writes a LqtdcdRwnk message to the shared stream. Only one writer at a time.
+func (tm *TunnelManager) send(td *cpmfczjv.LqtdcdRwnk) error {
 	tm.streamMu.Lock()
 	defer tm.streamMu.Unlock()
 	return tm.stream.Send(td)
@@ -97,7 +97,7 @@ func (tm *TunnelManager) send(td *sliverpb.TunnelData) error {
 func (tm *TunnelManager) CreateTunnel(sessionID string) (*TunnelIO, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	t, err := tm.client.RPC.CreateTunnel(ctx, &sliverpb.Tunnel{SessionID: sessionID})
+	t, err := tm.client.RPC.CreateTunnel(ctx, &cpmfczjv.Tunnel{SessionID: sessionID})
 	if err != nil {
 		return nil, err
 	}
@@ -117,7 +117,7 @@ func (tm *TunnelManager) CreateTunnel(sessionID string) (*TunnelIO, error) {
 		for {
 			select {
 			case data := <-tunnel.send:
-				if err := tm.send(&sliverpb.TunnelData{
+				if err := tm.send(&cpmfczjv.LqtdcdRwnk{
 					TunnelID:  tunnel.ID,
 					SessionID: tunnel.SessionID,
 					Data:      data,
@@ -145,7 +145,7 @@ func (tm *TunnelManager) StartShell(sessionID string, enablePTY bool) (*TunnelIO
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	_, err = tm.client.RPC.Shell(ctx, &sliverpb.ShellReq{
+	_, err = tm.client.RPC.Shell(ctx, &cpmfczjv.IliflFwg{
 		EnablePTY: enablePTY,
 		TunnelID:  tunnel.ID,
 		Request: &commonpb.Request{

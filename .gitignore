@@ -175,3 +175,11 @@ backend/web/dist/*
 
 # Local build binary
 /sliver-ui
+/sliver-server
+/sliver-client
+
+# Fetched BishopFox/sliver v1.7.3 (see docs/BUNDLED_SLIVER.md)
+/third_party/sliver/
+
+# Session compaction dumps (handoff keeps WINDOWS_LAB_HANDOFF.md)
+/docs/handoff/compaction_recent/

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { parseC2Url, matchC2Job } from '../c2'
+import { parseC2Url, matchC2Job, defaultC2Port, isUnsetC2Port } from '../c2'
 
 describe('parseC2Url', () => {
   it('splits a full C2 URL', () => {
@@ -35,5 +35,15 @@ describe('matchC2Job', () => {
 
   it('returns undefined when no live job shares protocol+port', () => {
     expect(matchC2Job('https://127.0.0.1:8443', jobs)).toBeUndefined()
+  })
+})
+
+describe('isUnsetC2Port', () => {
+  it('treats protocol defaults and leftover 8888 as unset', () => {
+    expect(defaultC2Port('https')).toBe('443')
+    expect(isUnsetC2Port('443', 'https')).toBe(true)
+    expect(isUnsetC2Port('8888', 'https')).toBe(true)
+    expect(isUnsetC2Port('8443', 'https')).toBe(false)
+    expect(isUnsetC2Port('8888', 'mtls')).toBe(true)
   })
 })

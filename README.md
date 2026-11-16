@@ -63,7 +63,7 @@ Protobuf pin: `github.com/bishopfox/sliver` **v1.7.3**. Live lab in this fork ha
 
 Obfuscate and Evasion are compile-time flags. Unique SHA-256 beats **exact-hash lookup only**; VirusTotal still sandboxes a new hash. The Go loader runtime still contains `VirtualAlloc` / `CreateThread` / `kernel32.dll`. HTTP C2 copy in the UI: **“This still looks like default Sliver to public detectors.”** Spoof metadata is a PE VERSIONINFO/icon clone, not FUD. Do not claim VirusTotal 0/70 or an AV/ML bypass.
 
-Tracking: [`docs/P1_OPERATOR_WORK.md`](./docs/P1_OPERATOR_WORK.md) · research: [`reports/Sliver UI imkoniyatlar tahlili.md`](./reports/Sliver%20UI%20imkoniyatlar%20tahlili.md) · loaders: [`docs/LOADER_AV_OPSEC_PLAN.md`](./docs/LOADER_AV_OPSEC_PLAN.md)
+Tracking: [`docs/P1_OPERATOR_WORK.md`](./docs/P1_OPERATOR_WORK.md) · research: [`reports/Sliver UI imkoniyatlar tahlili.md`](./reports/Sliver%20UI%20imkoniyatlar%20tahlili.md) · loaders: [`docs/LOADER_AV_OPSEC_PLAN.md`](./docs/LOADER_AV_OPSEC_PLAN.md) · AV layers close: [`docs/AV_LAYERS_CLOSE_PLAN.md`](./docs/AV_LAYERS_CLOSE_PLAN.md)
 
 ---
 
@@ -86,7 +86,8 @@ Work shipped in this fork, grouped by phase.
 - Cookie `sliverui_session` HttpOnly SameSite=Lax 24h (no Secure; in-process map, restart clears sessions).
 - Middleware protects `/api/*` and `/ws/*`. Login, `/api/auth/me`, and the SPA stay public.
 - [`install.sh`](./install.sh): binary, profile mirror `*.cfg` → `*.json`, localhost profile auto-pick, env file, `sliver-ui.service`, `Wants=` from `sliver.service`.
-- Flags: `--addr`, `--profile`, `--user`/`--pass`, `--no-auth`, `--build`, `--prefix`, `--skip-systemd`, `--no-start`.
+- Flags: `--addr`, `--profile`, `--user`/`--pass`, `--no-auth`, `--build`, `--with-server` (default), `--no-server`, `--replace-server`, `--prefix`, `--skip-systemd`, `--no-start`.
+- `--with-server` clones BishopFox/sliver **v1.7.3** into `third_party/sliver/` (gitignored), applies **generator patches** (Donut none, StartW-only exports, inline max-errors, per-generate polymorph) plus a **shared proto name map** (`patches/sliver-v1.7.3/proto-idents.json`, same seed on server and UI). Builds `sliver-server` + `sliver-client`, installs them next to the UI, issues a `127.0.0.1:31337` operator (`--permissions all`), and writes `sliver.service`. Rebuild both after a proto Apply. `--replace-server` overwrites a live `sliver.service`.
 - Default listen `127.0.0.1:8080`. Windows GUI-subsystem + WebView2; Linux/macOS HTTP. Logs on Windows mirrored to `sliver-ui.log`.
 
 ### 3. Loaders / AV OPSEC (`/loaders`)
@@ -96,9 +97,11 @@ Host-compile a **finished** PE / ELF / Mach-O — `POST /api/loaders/build` writ
 - Empty XOR key replaced with a random 16-byte key (embed is never plaintext).
 - Every build mints a 16-byte nonce mixed into XOR, 4–24KiB `n.bin` pad, random API-name `NameKey`, Go `-buildid` → **SHA-256 always changes** even with the same operator XOR key.
 - Hide-console / background default on (`-H windowsgui` on Windows; Unix setsid) — independent of persistence. Startup persistence default off: pick one method, or **All** (Windows: HKCU Run + schtasks ONLOGON + Startup copy; Linux: user systemd + crontab `@reboot`; Darwin: LaunchAgent only, no All). Usual quiet Windows pick is HKCU Run. All is noisier (three artefacts).
-- Windows: XOR `cfg.dat`; API names as `\xHH`; `ds()` XOR by **byte index** (ranging a string as runes broke `NameKey ≥ 0x80` and panicked `mustFind`); PAGE_NOACCESS → RW → RWX; 8MiB stack + `CALL` (`jump_windows_*.s`).
+- Windows **amd64/386** wrap is **MinGW C** on the UI host (`x86_64-w64-mingw32-gcc` / `i686-w64-mingw32-gcc`, `#embed`, ~tens of KiB + blob). Missing mingw → HTTP 503. **windows/arm64** and Linux/macOS stay on the Go stub. C wrap drops Go PE-shape ML (`gopclntab` / Wacatac class); it does **not** hide `sliverpb` in memory or keep a live session from Defender. XOR `cfg.dat`; PAGE_NOACCESS → RW → RWX; 8MiB stack + `CALL`; hang if PIC returns (`SLIV_BG=1` skips). RAM gate 2 GiB; computer name `HAL9TH` exits.
+- Wrap of a Windows **EXE** is rejected (generate `format=shellcode`). Shared DLLs default to **disk LoadLibrary** (C EXE + sibling DLL, export StartW, `engine=mingw-c-dll`); Tools → RDI is the unbacked PIC path. Windows wrap also **same-length branding clean**. Loaders → **Sliver fork** tab (`POST /api/fork/rewrite`) rewrites a local Sliver checkout: branding (module path; this UI still works) or proto (RPC names; rebuild this UI with `go mod replace`). Not a Defender guarantee.
 - Linux PIC (malasada): mmap RWX, fork/clone, assembly `CALL` on 8MiB stack (`jump_linux_*.s`). `syscall.Syscall(addr)` is a syscall trap, not a jump.
-- Also: Sliver RDI, SGN/XOR shellcode encoders, TCP stage listeners with optional AES/RC4.
+- Also: Sliver RDI, SGN/XOR shellcode encoders, TCP stage listeners with optional AES/RC4. Windows shellcode generate defaults Donut **Bypass=1** (no AMSI patch; CLI default 3 is signatured) and **ExitOpt=3** (block). Unique SHA-256 is a hash-IOC change, not a Defender bypass.
+- Generate **Polymorph** (default on): unique name suffix, force obfuscate, Donut entropy 3 when unset, per-download branding clean of returned bytes. Protobuf RPC names stay. Wrap C idents morph per build. Fork proto Apply uses a new random seed each time.
 - Implant `implant_builds.name` UNIQUE: mapped error + `replace_existing`.
 - **Rejected / not redone:** in-tree Donut or ScareCrow, encrypt-at-rest as an Implants FUD checkbox, VirusTotal widget.
 

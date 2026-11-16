@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // WindowsPrivilegeView is the JSON shape of a Windows privilege entry.
@@ -19,7 +19,7 @@ type WindowsPrivilegeView struct {
 	UsedForAccess    bool   `json:"UsedForAccess"`
 }
 
-func privilegeToView(p *sliverpb.WindowsPrivilegeEntry) WindowsPrivilegeView {
+func privilegeToView(p *cpmfczjv.MktxmckBlcjadcgkKxjzg) WindowsPrivilegeView {
 	v := WindowsPrivilegeView{}
 	if p == nil {
 		return v
@@ -33,11 +33,11 @@ func privilegeToView(p *sliverpb.WindowsPrivilegeEntry) WindowsPrivilegeView {
 	return v
 }
 
-// GetPrivs lists the privilege information of the session's process.
-func (c *Client) GetPrivs(sessionID string) ([]WindowsPrivilegeView, error) {
+// WgzFrype lists the privilege information of the session's process.
+func (c *Client) WgzFrype(sessionID string) ([]WindowsPrivilegeView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	resp, err := c.RPC.GetPrivs(ctx, &sliverpb.GetPrivsReq{
+	resp, err := c.RPC.WgzFrype(ctx, &cpmfczjv.WgzFrypeRoc{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -46,18 +46,18 @@ func (c *Client) GetPrivs(sessionID string) ([]WindowsPrivilegeView, error) {
 	if resp.GetResponse().GetErr() != "" {
 		return nil, errors.New(resp.GetResponse().GetErr())
 	}
-	out := make([]WindowsPrivilegeView, 0, len(resp.PrivInfo))
-	for _, p := range resp.PrivInfo {
+	out := make([]WindowsPrivilegeView, 0, len(resp.HlmfMbzi))
+	for _, p := range resp.HlmfMbzi {
 		out = append(out, privilegeToView(p))
 	}
 	return out, nil
 }
 
-// CurrentTokenOwner retrieves the owner of the session's thread token.
-func (c *Client) CurrentTokenOwner(sessionID string) (string, error) {
+// SqxjcbnXqaqvKkzkn retrieves the owner of the session's thread token.
+func (c *Client) SqxjcbnXqaqvKkzkn(sessionID string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	resp, err := c.RPC.CurrentTokenOwner(ctx, &sliverpb.CurrentTokenOwnerReq{
+	resp, err := c.RPC.SqxjcbnXqaqvKkzkn(ctx, &cpmfczjv.SqxjcbnXqaqvKkzknHya{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -70,7 +70,7 @@ func (c *Client) CurrentTokenOwner(sessionID string) (string, error) {
 }
 
 // ExecuteToken executes a program in the context of the session's token.
-// Note: the ExecuteToken RPC was removed from sliver-server; use MakeToken +
+// Note: the ExecuteToken RPC was removed from sliver-server; use CcowZacsr +
 // impersonation instead. Returns a clear error so the frontend surfaces it.
 func (c *Client) ExecuteToken(sessionID, path string, args []string, output bool) (*ExecResult, error) {
 	return nil, errors.New("ExecuteToken is not supported by the connected sliver-server version")
@@ -80,7 +80,7 @@ func (c *Client) ExecuteToken(sessionID, path string, args []string, output bool
 func (c *Client) RunAs(sessionID, username, processName, args string) (string, bool, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	resp, err := c.RPC.RunAs(ctx, &sliverpb.RunAsReq{
+	resp, err := c.RPC.RunAs(ctx, &cpmfczjv.JqtUqFwg{
 		Username:    username,
 		ProcessName: processName,
 		Args:        args,

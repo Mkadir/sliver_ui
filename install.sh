@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# install.sh — install Sliver UI and wire it to an existing sliver-client.
+# install.sh — install Sliver UI and (by default) a generator-patched sliver-server.
 #
 # Usage (from a clone):
 #   git clone <repo> && cd <repo>
@@ -12,6 +12,9 @@
 #   --pass PASS          UI login password (random if omitted)
 #   --no-auth            Disable UI login (leave SLIVER_UI_* unset)
 #   --build              Force build from source even if a binary exists
+#   --with-server        Build/install generator-patched sliver-server (default)
+#   --no-server          Skip teamserver; wire UI to an existing sliver-client
+#   --replace-server     Overwrite systemd sliver.service with the bundled unit
 #   --prefix DIR         Install directory (default: ~/.local/share/sliver-ui)
 #   --skip-systemd       Install files only; do not enable/start the service
 #   --no-start           Enable the unit but do not start it now
@@ -35,6 +38,8 @@ NO_AUTH=0
 FORCE_BUILD=0
 SKIP_SYSTEMD=0
 NO_START=0
+WITH_SERVER=1
+REPLACE_SERVER=0
 PREFIX="${HOME}/.local/share/sliver-ui"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -119,6 +124,9 @@ while [[ $# -gt 0 ]]; do
     --prefix) PREFIX="${2:?}"; shift 2 ;;
     --skip-systemd) SKIP_SYSTEMD=1; shift ;;
     --no-start) NO_START=1; shift ;;
+    --with-server) WITH_SERVER=1; shift ;;
+    --no-server) WITH_SERVER=0; shift ;;
+    --replace-server) REPLACE_SERVER=1; shift ;;
     -h|--help) usage ;;
     *) die "unknown argument: $1 (try --help)" ;;
   esac
@@ -192,6 +200,93 @@ obtain_binary() {
 }
 
 obtain_binary
+
+mkdir -p "${HOME}/bin"
+
+SERVER_BIN="${INSTALL_BIN}/sliver-server"
+CLIENT_BIN="${INSTALL_BIN}/sliver-client"
+
+obtain_server() {
+  [[ "$WITH_SERVER" -eq 1 ]] || { warn "skipping bundled sliver-server (--no-server)"; return; }
+  if [[ ! -f "${SCRIPT_DIR}/scripts/build-sliver-server.sh" ]]; then
+    warn "no scripts/build-sliver-server.sh — skip teamserver"
+    WITH_SERVER=0
+    return
+  fi
+  have go || die "go is required to build the bundled sliver-server"
+  have git || die "git is required to fetch BishopFox/sliver v1.7.3"
+  log "building generator-patched sliver-server (first run downloads assets, slow)…"
+  (cd "$SCRIPT_DIR" && bash scripts/build-sliver-server.sh)
+  [[ -x "${SCRIPT_DIR}/sliver-server" ]] || die "sliver-server build failed"
+  cp -f "${SCRIPT_DIR}/sliver-server" "$SERVER_BIN"
+  chmod 755 "$SERVER_BIN"
+  ln -sfn "$SERVER_BIN" "${HOME}/bin/sliver-server"
+  if [[ -x "${SCRIPT_DIR}/sliver-client" ]]; then
+    cp -f "${SCRIPT_DIR}/sliver-client" "$CLIENT_BIN"
+    chmod 755 "$CLIENT_BIN"
+    ln -sfn "$CLIENT_BIN" "${HOME}/bin/sliver-client"
+  fi
+  ok "installed patched sliver-server → ${SERVER_BIN}"
+}
+
+provision_operator() {
+  [[ "$WITH_SERVER" -eq 1 && -x "$SERVER_BIN" ]] || return
+  mkdir -p "$CLIENT_CONFIGS"
+  if [[ -n "$PROFILE" ]] && [[ -f "${CLIENT_CONFIGS}/${PROFILE}.json" || -f "${CLIENT_CONFIGS}/${PROFILE}.cfg" ]]; then
+    ok "keeping existing profile ${PROFILE}"
+    return
+  fi
+  local op_name="sliverui"
+  local op_file="${CLIENT_CONFIGS}/${op_name}.cfg"
+  log "issuing operator config ${op_name} (lhost 127.0.0.1:31337)"
+  # v1.7.3 app dir is ~/.sliver (not ~/.sliver-server).
+  if [[ ! -d "${HOME}/.sliver" ]]; then
+    "$SERVER_BIN" unpack >/dev/null 2>&1 || true
+  fi
+  if "$SERVER_BIN" operator --name "$op_name" --lhost 127.0.0.1 --lport 31337 --permissions all --save "$op_file" >/dev/null 2>&1; then
+    PROFILE="$op_name"
+    if [[ ! -e "${CLIENT_CONFIGS}/${op_name}.json" ]]; then
+      ln -sfn "${op_name}.cfg" "${CLIENT_CONFIGS}/${op_name}.json"
+    fi
+    ok "wrote ${op_file}"
+  else
+    warn "could not issue operator config — start sliver-server then: sliver-server operator --name sliverui --lhost 127.0.0.1 --permissions all --save ${op_file}"
+  fi
+}
+
+write_server_unit() {
+  [[ "$WITH_SERVER" -eq 1 && -x "$SERVER_BIN" ]] || return
+  local run_user run_group
+  run_user="$(id -un)"
+  run_group="$(id -gn)"
+  mkdir -p "$INSTALL_UNIT_DIR"
+  cat > "${INSTALL_UNIT_DIR}/sliver.service" <<EOF
+[Unit]
+Description=Sliver C2 teamserver (generator-patched, from sliver-ui tree)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=${run_user}
+Group=${run_group}
+WorkingDirectory=${PREFIX}
+ExecStart=${SERVER_BIN} daemon
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target
+EOF
+  mkdir -p "${PREFIX}/systemd" "${SCRIPT_DIR}/systemd"
+  cp -f "${INSTALL_UNIT_DIR}/sliver.service" "${PREFIX}/systemd/sliver.service"
+  cp -f "${INSTALL_UNIT_DIR}/sliver.service" "${SCRIPT_DIR}/systemd/sliver.service"
+  ok "wrote systemd unit → ${INSTALL_UNIT_DIR}/sliver.service"
+}
+
+obtain_server
+provision_operator
 
 # --- PATH shim ---
 mkdir -p "${HOME}/bin"
@@ -375,12 +470,24 @@ install_systemd() {
   have systemctl || { warn "systemctl not found — skip service install"; return; }
 
   write_unit
+  write_server_unit
 
   # Link into /etc if possible (same pattern that works without interactive sudo on many hosts).
   if systemctl link "${INSTALL_UNIT_DIR}/sliver-ui.service" >/dev/null 2>&1; then
     ok "linked sliver-ui.service into systemd"
   else
     warn "systemctl link failed — try: sudo cp ${INSTALL_UNIT_DIR}/sliver-ui.service /etc/systemd/system/"
+  fi
+  if [[ "$WITH_SERVER" -eq 1 && -f "${INSTALL_UNIT_DIR}/sliver.service" ]]; then
+    if [[ "$REPLACE_SERVER" -eq 1 ]] || ! systemctl show sliver.service -p LoadState --value 2>/dev/null | grep -qx loaded; then
+      if systemctl link "${INSTALL_UNIT_DIR}/sliver.service" >/dev/null 2>&1; then
+        ok "linked sliver.service into systemd"
+      else
+        warn "systemctl link sliver.service failed — try: sudo cp ${INSTALL_UNIT_DIR}/sliver.service /etc/systemd/system/"
+      fi
+    else
+      warn "sliver.service already loaded — bundled unit is at ${INSTALL_UNIT_DIR}/sliver.service (pass --replace-server to overwrite)"
+    fi
   fi
 
   systemctl daemon-reload >/dev/null 2>&1 || warn "daemon-reload failed (retry later with: systemctl daemon-reload)"

@@ -295,7 +295,7 @@ func downloadGithubPackage(pkg *ArmoryPackageView) ([]byte, error) {
 
 // ArmoryInstallAlias downloads a Minisign-verified alias bundle and installs
 // it into this process's aliases/ directory. Extensions are not installed
-// here (they need a live session RegisterExtension). Installs are client-local.
+// here (they need a live session JgkiqfwfCnhefgsqp). Installs are client-local.
 func ArmoryInstallAlias(commandName string) (*AliasView, error) {
 	pkg, err := findArmoryPackage(commandName)
 	if err != nil {

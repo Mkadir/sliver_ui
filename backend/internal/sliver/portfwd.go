@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 const (
@@ -171,7 +171,7 @@ func (pf *PortForward) handleConn(conn net.Conn) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	_, err = pf.mgr.client.RPC.Portfwd(ctx, &sliverpb.PortfwdReq{
+	_, err = pf.mgr.client.RPC.Portfwd(ctx, &cpmfczjv.HmxhfcxZwu{
 		Port:     pf.Port,
 		Protocol: tcpProtocol,
 		Host:     pf.Host,

@@ -527,7 +527,11 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
         </div>
         <div className="field">
           <label>{t('advanced.process')}</label>
-          <input value={process} onChange={(e) => setProcess(e.target.value)} placeholder="notepad.exe" />
+          <input
+            value={process}
+            onChange={(e) => setProcess(e.target.value)}
+            placeholder="RuntimeBroker.exe"
+          />
         </div>
         {mode !== 'assembly' && (
           <div className="field">
@@ -540,6 +544,12 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
             {running ? t('common.loading') : t('advanced.run')}
           </button>
         </div>
+      </div>
+      <div className="form-hint" style={{ marginBottom: 8 }}>
+        {t('advanced.processHint')}
+      </div>
+      <div className="form-hint warn-hint" style={{ marginBottom: 12 }}>
+        {t('advanced.crtWarn')}
       </div>
       {error && <div className="error-banner">{error}</div>}
       {output && (
@@ -765,6 +775,9 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
               {scRunning ? t('common.loading') : t('advanced.shellcodeRun')}
             </button>
           </div>
+        </div>
+        <div className="form-hint warn-hint" style={{ marginBottom: 12 }}>
+          {t('advanced.crtWarn')}
         </div>
         {scError && <div className="error-banner">{scError}</div>}
         {scMsg && (

@@ -28,6 +28,9 @@ func Build(opts Options) (*Result, error) {
 		return nil, err
 	}
 	mintUniqueness(&opts)
+	if useMingwC(opts) {
+		return buildWindowsC(opts)
+	}
 	goBin, err := lookGo()
 	if err != nil {
 		return nil, err

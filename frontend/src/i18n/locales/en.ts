@@ -530,7 +530,7 @@ export default {
     empty: 'No builds yet',
     genTitle: 'Generate Implant',
     opsecHint:
-      'OPSEC: bland implant name, HTTPS + HTTP C2 profile, format=Service for Windows services. Obfuscate/Evasion are compile-time only — use Loaders for RDI, encoders, and stage-0. They are not an AV/EDR bypass guarantee.',
+      'Windows default is format=shared then Loaders disk LoadLibrary (MEM_IMAGE). HTTPS needs a non-default HTTP C2 profile. Obfuscate/Evasion are compile-time only. Unique hash and C wrap are not an AV/EDR bypass.',
     name: 'Name',
     os: 'OS',
     arch: 'Arch',
@@ -551,9 +551,15 @@ export default {
       'Beacon implants sleep and check in on this interval. Tasks queue until the next check-in. Session implants stay interactive.',
     beaconShort: 'beacon',
     obfuscate: 'Obfuscate',
+    polymorph: 'Polymorph each generate',
+    polymorphHint:
+      'Adds a unique name suffix, keeps garble on, uses Donut entropy 3 for shellcode, and same-length-rewrites bishopfox/buildinfo/COM exports in the downloaded bytes. Protobuf RPC names (GetJitter, sliverpb, …) stay so this UI can open a session. Memory YARA can still hit those after callback. Not an AV bypass.',
     debug: 'Debug',
     evasion: 'Evasion',
     httpC2Profile: 'HTTP C2 profile',
+    httpC2Hint: 'Stock "default" uses public .woff/.js/.php paths. Pick ms-update or a custom profile.',
+    httpC2DefaultBlocked:
+      'HTTP/HTTPS generate needs a non-default HTTP C2 profile. Save ms-update on the HTTP C2 page if the list is empty.',
     trafficEncoders: 'Enable traffic encoders',
     trafficEncoderList: 'Encoders',
     limitDomainJoined: 'Require domain-joined host',
@@ -591,7 +597,7 @@ export default {
     continueLoaders: 'Continue in Loaders',
     sendToLoaders: 'Send to Loaders',
     generatedContinue:
-      'Generated: {{msg}}. Shared/shellcode builds can be post-processed in Loaders (RDI / encode / stage-0).',
+      'Generated: {{msg}}. Windows shared: Loaders → Build EXE (disk LoadLibrary). Shellcode wrap is Unbacked PIC.',
     replaceExisting: 'Replace existing build with the same name',
     nameTakenHint:
       'A build named "{{name}}" already exists. Rename it, enable “Replace existing”, delete the old row, or use Download / Regenerate on that build.',
@@ -624,6 +630,23 @@ export default {
     spoofDone: 'Applied donor metadata to {{name}}',
     spoofWindowsOnly: 'Spoof metadata applies to Windows PE builds.',
     spoofPickBuild: 'Windows build',
+    formatWrapHintExe:
+      'Loaders wrap needs format=shellcode (Donut PIC). This EXE is a finished implant, not wrap input.',
+    formatWrapHintShellcode: 'Ready for Loaders → Build EXE. C2 must match a live listener.',
+    formatWrapHintShared:
+      'Loaders wrap this as a C EXE + sibling DLL (disk LoadLibrary, MEM_IMAGE). Tools → RDI is Unbacked PIC.',
+    donutBypass: 'Donut AMSI/WLDP bypass',
+    donutBypassHint:
+      '1 = none (this UI default). Sliver CLI default 3 continues after a signatured AMSI patch (Win32/AMSI_Patch_T.B13). This does not add a patch.',
+    bypassNone: '1 — none (no patch)',
+    bypassAbort: '2 — abort on failure',
+    bypassContinue: '3 — continue on failure (signatured patch)',
+    donutExitOpt: 'Donut exit',
+    donutExitHint:
+      '3 = Donut blocks after the payload. The wrap host also stays alive if PIC returns. Not an AV bypass.',
+    exitThread: '1 — exit thread',
+    exitProcess: '2 — exit process',
+    exitBlock: '3 — block (keep process)',
   },
   loaders: {
     title: 'Loaders',
@@ -631,11 +654,12 @@ export default {
     whatIsThis:
       'Pick a shellcode or shared build. The UI host compiles a loader for that OS/arch and you download the finished binary. Windows DLLs are converted with RDI first. Lab only — this is not an AV bypass.',
     disclaimer:
-      'Linux shellcode is mapped RWX, forked, and CALLed on an 8MiB stack. Windows encrypts the embed, allocates RW (PAGE_NOACCESS first), decrypts off-heap, flips to RWX, and CALLs on a dedicated stack — no CreateThread. Donut/SGN still need a writable window. A short pre-run delay skips some AV emulators. The implant still needs a live listener on its C2 URL. This is not a guaranteed AV bypass.',
+      'Linux shellcode is mapped RWX, forked, and CALLed on an 8MiB stack. Windows amd64/386 wrap is MinGW C (no Go runtime) so the stub is not a Go PE. It still VirtualAlloc+CALL of Sliver PIC — that does not hide sliverpb in memory or stop Defender from killing a live session. Unique SHA-256 is a hash-IOC change only. This is not an AV bypass.',
     tab: {
       wrap: 'Build EXE',
       tools: 'RDI / encode',
       stage: 'Stage listener',
+      fork: 'Sliver fork',
       guide: 'Notes',
     },
     noBlob: 'No payload loaded yet',
@@ -645,23 +669,57 @@ export default {
     building: 'Compiling {{os}}/{{arch}}…',
     os: 'OS',
     step1: 'Load shellcode',
-    step1Hint: 'Pull a format=shellcode (or shared) build from the server, or upload a .bin.',
+    step1Hint: 'Pull a Windows format=shared build (disk LoadLibrary) or shellcode, or upload a .bin.',
     step2: 'Build executable',
     step2Hint:
-      'Go on this host cross-compiles a loader for the implant OS/arch. The download is the finished binary — no ZIP, no local compile step.',
+      'This host compiles the loader. Windows amd64/386: MinGW C. Windows arm64 and Linux/macOS: Go. The download is the finished binary.',
     pickBuild: 'Shellcode / shared build on server',
     selectBuild: 'Select a build…',
     loadBuild: 'Load build',
     upload: 'Upload .bin',
-    sourceHint: 'Generate format=shellcode (or shared) on',
+    sourceHint: 'Generate format=shared (Windows) or shellcode on',
     loadedBuild: 'Loaded {{name}} ({{size}} bytes)',
     uploaded: 'Uploaded {{name}} ({{size}} bytes)',
     blobReady: 'Blob ready: {{size}} bytes · SHA-256 {{hash}}…',
     transform: 'Advanced transforms',
     toolsHint: 'Optional. RDI turns a DLL into PIC shellcode. Encoders only change bytes (not a crypter).',
-    rdi: 'Convert DLL via RDI first',
+    rdi: 'Convert DLL via RDI first (Unbacked PIC)',
     rdiFn: 'RDI export / function',
-    rdiAuto: 'Windows shared library: RDI runs automatically before compile.',
+    rdiAuto: 'Non-Windows shared: wrap still compiles the loaded blob. Windows shared uses disk LoadLibrary (see wrap).',
+    diskDllHint:
+      'This is a Windows DLL. Wrap builds a small C EXE that LoadLibrary the DLL from the same folder and calls StartW. Both files download. This is disk MEM_IMAGE, not RDI/unbacked PIC. It still needs a string-clean implant; it is not a Defender bypass.',
+    wrapDownloadedDll: 'Also downloaded {{name}}. Keep the EXE and DLL in the same folder.',
+    diskDllCopy:
+      'Disk LoadLibrary: drop EXE + DLL together. Persistence copies the sibling DLL into Startup. Tools → RDI is the old in-memory PIC path.',
+    cleanHint:
+      'Windows wrap rewrites branding, Go buildinfo, and unused COM exports in place (same length). Protobuf RPC names (sliverpb, GetJitter, ScreenshotReq, …) stay — stock sliver-server needs them. Remaining hits are listed after compile. This is not a Sliver fork and not a Defender bypass.',
+    cleanReplaced: 'Rewrote {{count}} branding/buildinfo/export strings (same length).',
+    cleanRemaining:
+      '{{count}} family strings remain (protobuf RPC / sliverpb). Stock teamserver cannot use a protobuf-renamed implant. Fork Sliver to change those.',
+    forkTitle: 'Sliver source fork (this UI host)',
+    forkHint:
+      'Rewrites a local BishopFox Sliver checkout on this machine. Branding changes the Go module path (this UI still speaks stock protobuf). Proto mode same-length-renames family RPC names and requires rebuilding this UI against the tree.',
+    forkWarn:
+      'Apply writes the checkout. Dry-run first. This is not a Defender bypass. Do not point it at sliver-ui. Proto mode breaks stock sliver-client until both server and this UI are rebuilt.',
+    forkRoot: 'Absolute path to Sliver checkout',
+    forkModule: 'New Go module path (branding)',
+    forkBranding: 'Branding: rewrite github.com/bishopfox/sliver module path',
+    forkProto: 'Proto: same-length rename GetJitter / sliverpb / ScreenshotReq (rebuild UI)',
+    forkGenerator: 'Generator: patch sliver-server implant compiler (Donut none, StartW-only exports, inline max-errors)',
+    forkGeneratorHint:
+      'This UI is a client. EXE/shellcode/shared are compiled on sliver-server from implant/ + server/generate/. These patches edit that source. Rebuild sliver-server, generate from it. Garble already uses -seed=random when Obfuscate is on. Protobuf names stay unless Proto is checked.',
+    forkBrandingHint:
+      'After branding: build sliver-server from the checkout, generate SHARED implants there, wrap with disk LoadLibrary. Leave this UI as-is.',
+    forkProtoHint:
+      'After proto: go mod edit -replace github.com/bishopfox/sliver=<checkout> in sliver-ui/backend, go build, restart. Stock sliver-client will not work.',
+    forkDryRun: 'Dry-run',
+    forkApply: 'Apply rewrite',
+    forkRunning: 'Rewriting checkout…',
+    forkDryDone: 'Dry-run complete — no files written',
+    forkApplyDone: 'Checkout rewritten',
+    forkNeedsUI: 'rebuild this UI',
+    forkRotate:
+      'Each proto Apply uses a new random seed, so family names differ from the last Apply. Rebuild server (and this UI) after every proto Apply.',
     encoder: 'Shellcode encoder',
     arch: 'Architecture',
     iterations: 'Iterations',
@@ -673,18 +731,19 @@ export default {
     download: 'Download raw .bin',
     needShellcode: 'Load shellcode first',
     downloadExeZip: 'Build executable',
-    wrapDownloaded: 'Built {{name}} ({{size}} bytes) for {{os}}/{{arch}} · SHA-256 {{hash}}…',
+    wrapDownloaded: 'Built {{name}} ({{size}} bytes) for {{os}}/{{arch}} · {{engine}} · SHA-256 {{hash}}…',
     wrapResult: 'Download name: {{name}}',
-    wrapCompileHint: 'Compiled on the sliver-ui host with Go. Needs the Go toolchain on this machine.',
+    wrapCompileHint:
+      'Compiled on the sliver-ui host. Windows amd64/386 need mingw-w64 gcc (apt install gcc-mingw-w64-x86-64). Other targets need Go. Missing mingw returns 503.',
     runHint:
-      'Run the downloaded file on a matching OS/arch. Windows waits ~2s before executing (emulator check). Hide-console returns immediately — watch Sessions and Beacons. If nothing checks in, that build’s C2 (protocol/host/port) has no listener.',
+      'Run the downloaded file on a matching OS/arch. Windows waits ~2s (toy-emulator Sleep skip), needs ≥2 GiB RAM, and exits if the computer name is HAL9TH (MsMpEng emulator host). Hide-console hides the window only. Watch Sessions for session implants and Beacons for beacons. If nothing checks in, that build’s C2 has no matching listener.',
     hideConsole: 'Hide console / run in background',
     hideConsoleHint:
       'Separate from persistence. Already on by default. Windows: GUI subsystem (no console). Linux/macOS: re-exec with setsid; the parent exits immediately. Hiding the window is not hiding from EDR.',
     xorKey: 'Optional extra XOR key',
     xorKeyPh: 'empty = extra random key (optional)',
     xorUnique:
-      'Every compile adds a unique nonce, padding, and linker build ID, so SHA256 always changes — even with the same XOR key and payload. VirusTotal still sandboxes a new hash; this only beats exact-hash blocks.',
+      'Every compile adds a unique nonce and padding, so SHA256 always changes. That only beats exact-hash lookup. A MinGW C stub drops Go PE-shape ML (Wacatac/gopclntab). After decrypt, Defender still sees the Sliver implant in this process.',
     stageTitle: 'Stage-0 (fetch from network — advanced)',
     stageHint:
       'Different path: small stager downloads stage-2 over TCP. Use Wrap→EXE if you want shellcode baked into a local EXE. AES key must be 16/24/32 chars; IV exactly 16.',
@@ -708,7 +767,7 @@ export default {
     guide: {
       wrap: 'Most common: Implants → format=shellcode with a C2 that matches a live listener → Loaders → Build executable → run the downloaded binary in lab.',
       localInject: 'Already have a session: Tools → encode optional → Sessions → Advanced → execute-shellcode.',
-      rdi: 'Have a DLL (shared): Build EXE auto-runs RDI, or use Tools → RDI then inject.',
+      rdi: 'Have a DLL (shared): Build EXE downloads a C LoadLibrary host plus the DLL. Keep them in one folder. Tools → RDI is in-memory PIC.',
       stage: 'Want tiny first drop: Stage-0 listener + custom fetch stager (payload not on disk until run).',
       sideload: 'Sideload: bland DLL name beside a signed host.',
       external: 'Stronger packing: Donut/ScareCrow/PEzor/ShellcodePack outside this UI.',
@@ -748,6 +807,20 @@ export default {
     stageListenerEmpty: 'No active stage listeners',
     stageStopListener: 'Stop',
     stageStopDone: 'Stage listener {{id}} stopped',
+    c2Missing:
+      'This build’s C2 has no matching live listener (protocol + port). Compile still works; the implant will not call back until that job is up.',
+    c2Loopback:
+      'C2 is 127.0.0.1 / localhost. That is the Windows guest itself unless the teamserver runs on the same OS. Use the host the implant can reach.',
+    beaconWatch:
+      'This build is a beacon. Watch Beacons, not Sessions. Wait at least one interval plus jitter.',
+    labConsole: 'Lab verify: turn hide-console off so panics and the pause are visible.',
+    labConsoleBtn: 'Lab: show console',
+    keepAliveHint:
+      'If PIC returns, the Windows host stays alive (Sleep) instead of ExitProcess. SLIV_BG=1 skips hang for tests. Keeping the process does not hide the implant from Defender.',
+    nativeCHint:
+      'C wrap is a native PE (~tens of KiB + blob), not a Go runtime. It can change whether the unsigned wrap looks like Go malware. It does not stop Defender killing a session after callback (sliverpb / CommandAndControl).',
+    defenderHint:
+      'If a live session dies, read Protection History (events 1116/1117/1015) and Get-MpThreat. Loader XOR/unique-hash/RWX is already spent after decrypt. Unique hash is not a Defender bypass.',
   },
   events: {
     title: 'Events',
@@ -800,6 +873,8 @@ export default {
     disconnectedMsg: '\r\n[*] Disconnected.',
     reconnecting: '\r\n[*] Connection lost. Reconnecting…\r\n',
     errorMsg: '\r\n[!] Connection error.\r\n',
+    shellWarn:
+      'Windows interactive shell defaults to powershell.exe -NoExit UTF-8 (Microsoft 2022 hunt). Interactive shell is high-signal. Format/wrap does not close this layer.',
   },
   detail: {
     title: 'Session',
@@ -971,6 +1046,8 @@ export default {
     migrate: 'Migrate',
     dump: 'Dump',
     confirmMigrate: 'Migrate the session to process {{pid}}?',
+    crtWarn:
+      'Migrate uses remote inject (VirtualAllocEx → WriteProcessMemory → CreateRemoteThread). Changing the target PID does not hide this.',
     empty: 'No processes returned',
     failed: 'Failed',
   },
@@ -1216,6 +1293,10 @@ export default {
     bofOk: 'Ran {{name}}',
     bofEmpty: 'No aliases installed. Open Armory to install one.',
     psexecDefaultHint: 'Use a bland service name. “Sliver” is a high-signal default.',
+    processHint:
+      'Default used to be notepad.exe (Microsoft 2022 hunt). Pick a bland host process. Injection is still visible to EDR.',
+    crtWarn:
+      'Sideload / spawn-dll / execute-assembly / migrate use remote inject (VirtualAllocEx → WriteProcessMemory → CreateRemoteThread). Disk LoadLibrary wrap does not hide this.',
   },
   tokens: {
     title: 'Token Operations',
@@ -1227,6 +1308,8 @@ export default {
     password: 'Password',
     domain: 'Domain',
     hostingProcess: 'Hosting Process',
+    getSystemHint:
+      'Default used to be spoolsv.exe (Microsoft 2022 hunt). Pick a bland SYSTEM-context host. Injection is still visible to EDR.',
     execute: 'Execute',
     revToSelf: 'Revert To Self',
     windowsOnly: 'Token operations are only available on Windows sessions.',

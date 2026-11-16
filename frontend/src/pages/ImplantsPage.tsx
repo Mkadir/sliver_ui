@@ -3,7 +3,8 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
 import { base64ToBytes, triggerDownload } from '../lib/binary'
-import { matchC2Job, parseC2Url } from '../lib/c2'
+import { defaultC2Port, isUnsetC2Port, matchC2Job, parseC2Url } from '../lib/c2'
+import { HTTP_C2_TEMPLATES, PREFERRED_HTTP_C2_PROFILE } from '../lib/httpC2Templates'
 import { implantHashes, rememberImplantHash, shortHash } from '../lib/artifactHash'
 import type { CompilerInfo, ExternalBuilder, ImplantBuild, ImplantConfig, ImplantProfile, Job, Session } from '../lib/types'
 import C2JobStatus from '../components/C2JobStatus'
@@ -38,6 +39,10 @@ function listenerJobName(type: string): string {
   return type === 'wireguard' ? 'wg' : type
 }
 
+function defaultFormat(osName: string): string {
+  return osName === 'windows' ? 'shared' : 'exe'
+}
+
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -61,7 +66,7 @@ export default function ImplantsPage() {
   const [name, setName] = useState('OneDriveUpdater')
   const [os, setOs] = useState('windows')
   const [arch, setArch] = useState('amd64')
-  const [format, setFormat] = useState('exe')
+  const [format, setFormat] = useState('shared')
   const [c2Type, setC2Type] = useState('https')
   const [c2Host, setC2Host] = useState('127.0.0.1')
   const [c2Port, setC2Port] = useState('443')
@@ -69,14 +74,17 @@ export default function ImplantsPage() {
   const [jitter, setJitter] = useState('20')
   const [isBeacon, setIsBeacon] = useState(false)
   const [obfuscate, setObfuscate] = useState(true)
+  const [polymorph, setPolymorph] = useState(true)
   const [debug, setDebug] = useState(false)
   const [evasion, setEvasion] = useState(false)
   const [sgnEnabled, setSgnEnabled] = useState(false)
   const [shellcodeEntropy, setShellcodeEntropy] = useState(2)
+  const [shellcodeBypass, setShellcodeBypass] = useState(1)
+  const [shellcodeExitOpt, setShellcodeExitOpt] = useState(3)
   const [replaceExisting, setReplaceExisting] = useState(false)
   const [continueLoaders, setContinueLoaders] = useState<{ name: string } | null>(null)
-  const [httpC2Profile, setHttpC2Profile] = useState('default')
-  const [httpC2Profiles, setHttpC2Profiles] = useState<string[]>(['default'])
+  const [httpC2Profile, setHttpC2Profile] = useState(PREFERRED_HTTP_C2_PROFILE)
+  const [httpC2Profiles, setHttpC2Profiles] = useState<string[]>([PREFERRED_HTTP_C2_PROFILE])
   const [trafficEncodersEnabled, setTrafficEncodersEnabled] = useState(false)
   const [trafficEncoders, setTrafficEncoders] = useState<string[]>([])
   const [selectedEncoders, setSelectedEncoders] = useState<string[]>([])
@@ -162,12 +170,26 @@ export default function ImplantsPage() {
   const loadOpsecOptions = async () => {
     try {
       const [profiles, encoders] = await Promise.all([api.httpC2Profiles(), api.trafficEncoders()])
-      const names = (profiles.profiles || []).map((p) => p.name).filter(Boolean)
-      setHttpC2Profiles(names.length ? names : ['default'])
-      if (names.length && !names.includes(httpC2Profile)) setHttpC2Profile(names[0])
+      let names = (profiles.profiles || []).map((p) => p.name).filter(Boolean)
+      if (!names.includes(PREFERRED_HTTP_C2_PROFILE) && HTTP_C2_TEMPLATES[PREFERRED_HTTP_C2_PROFILE]) {
+        try {
+          await api.saveHttpC2Profile(HTTP_C2_TEMPLATES[PREFERRED_HTTP_C2_PROFILE], false)
+          names = [...names, PREFERRED_HTTP_C2_PROFILE]
+        } catch {
+          /* teamserver may already have it, or RPC may refuse; generate still blocks default */
+        }
+      }
+      const usable = names.filter((n) => n.toLowerCase() !== 'default')
+      setHttpC2Profiles(usable.length ? usable : names)
+      const next = usable.includes(httpC2Profile)
+        ? httpC2Profile
+        : usable.includes(PREFERRED_HTTP_C2_PROFILE)
+          ? PREFERRED_HTTP_C2_PROFILE
+          : usable[0] || ''
+      if (next && next !== httpC2Profile) setHttpC2Profile(next)
       setTrafficEncoders((encoders.encoders || []).map((e) => e.name))
     } catch {
-      setHttpC2Profiles(['default'])
+      setHttpC2Profiles([PREFERRED_HTTP_C2_PROFILE])
       setTrafficEncoders([])
     }
   }
@@ -204,8 +226,8 @@ export default function ImplantsPage() {
 
   useEffect(() => {
     if (c2Host === '127.0.0.1' && detectedC2.host) setC2Host(detectedC2.host)
-    if (c2Port === '8888' && detectedC2.port) setC2Port(detectedC2.port)
-  }, [detectedC2, c2Host, c2Port])
+    if (detectedC2.port && isUnsetC2Port(c2Port, c2Type)) setC2Port(detectedC2.port)
+  }, [detectedC2, c2Host, c2Port, c2Type])
 
   const currentOS = OS_ARCHES.find((o) => o.os === os)
   const formatOptions = FORMATS[os] || ['exe']
@@ -237,9 +259,10 @@ export default function ImplantsPage() {
     debug,
     evasion,
     obfuscate,
+    polymorph,
     maxConnectionErrors: 1000,
     limitDomainJoined,
-    http_c2_profile: httpC2Profile || 'default',
+    http_c2_profile: httpC2Profile,
     traffic_encoders_enabled: trafficEncodersEnabled,
     traffic_encoders: trafficEncodersEnabled ? selectedEncoders : [],
     limit_hostname: limitHostname || undefined,
@@ -249,7 +272,9 @@ export default function ImplantsPage() {
     limit_locale: limitLocale || undefined,
     external_builder_name: externalBuilderName || undefined,
     sgn_enabled: format === 'shellcode' ? sgnEnabled : false,
-    shellcode_entropy: format === 'shellcode' ? shellcodeEntropy : undefined,
+    shellcode_entropy: format === 'shellcode' ? (polymorph && shellcodeEntropy < 3 ? 3 : shellcodeEntropy) : undefined,
+    shellcode_bypass: format === 'shellcode' ? shellcodeBypass : undefined,
+    shellcode_exitopt: format === 'shellcode' ? shellcodeExitOpt : undefined,
     shellcode_encoder: format === 'shellcode' && sgnEnabled ? 'SHIKATA_GA_NAI' : undefined,
     replace_existing: replaceExisting,
     canary_domains:
@@ -275,6 +300,10 @@ export default function ImplantsPage() {
 
   const saveProfile = async () => {
     if (!profileName) return
+    if (httpC2Blocked) {
+      setMessage(t('implants.httpC2DefaultBlocked'))
+      return
+    }
     setMessage('')
     try {
       await api.saveImplantProfile({ name: profileName, is_beacon: isBeacon, config: buildConfig() })
@@ -331,7 +360,15 @@ export default function ImplantsPage() {
     setMessage(t('profiles.loaded', { name: p.Name }))
   }
 
+  const httpC2Blocked =
+    (c2Type === 'http' || c2Type === 'https') &&
+    (!httpC2Profile || httpC2Profile.toLowerCase() === 'default')
+
   const generate = async () => {
+    if (httpC2Blocked) {
+      setMessage(t('implants.httpC2DefaultBlocked'))
+      return
+    }
     setGenerating(true)
     setMessage('')
     setContinueLoaders(null)
@@ -607,10 +644,15 @@ export default function ImplantsPage() {
               value={os}
               onChange={(e) => {
                 const next = e.target.value
+                const prevDefault = defaultFormat(os)
                 setOs(next)
                 setArch(OS_ARCHES.find((o) => o.os === next)?.arches[0] || 'amd64')
                 const formats = FORMATS[next] || ['exe']
-                if (!formats.includes(format)) setFormat(formats[0])
+                const nextDefault = defaultFormat(next)
+                let f = format
+                if (!formats.includes(f) || f === prevDefault) f = nextDefault
+                if (!formats.includes(f)) f = formats[0]
+                setFormat(f)
               }}
             >
               {OS_ARCHES.map((o) => (
@@ -639,10 +681,28 @@ export default function ImplantsPage() {
                 </option>
               ))}
             </select>
+            {os === 'windows' && format === 'exe' && (
+              <p className="muted">{t('implants.formatWrapHintExe')}</p>
+            )}
+            {os === 'windows' && format === 'shellcode' && (
+              <p className="muted">{t('implants.formatWrapHintShellcode')}</p>
+            )}
+            {os === 'windows' && format === 'shared' && (
+              <p className="muted">{t('implants.formatWrapHintShared')}</p>
+            )}
           </div>
           <div className="field">
             <label>{t('implants.c2Type')}</label>
-            <select value={c2Type} onChange={(e) => setC2Type(e.target.value)}>
+            <select
+              value={c2Type}
+              onChange={(e) => {
+                const next = e.target.value
+                setC2Type(next)
+                const typeName = listenerJobName(next)
+                const match = jobs.find((j) => j.Name.toLowerCase() === typeName)
+                setC2Port(match ? String(match.Port) : defaultC2Port(next) || c2Port)
+              }}
+            >
               {C2_TYPES.map((c) => (
                 <option key={c} value={c}>
                   {c}
@@ -683,6 +743,13 @@ export default function ImplantsPage() {
           </div>
           <div className="field check">
             <label>
+              <input type="checkbox" checked={polymorph} onChange={(e) => setPolymorph(e.target.checked)} />
+              {t('implants.polymorph')}
+            </label>
+          </div>
+          {polymorph && <p className="muted span-all">{t('implants.polymorphHint')}</p>}
+          <div className="field check">
+            <label>
               <input type="checkbox" checked={debug} onChange={(e) => setDebug(e.target.checked)} />
               {t('implants.debug')}
             </label>
@@ -712,6 +779,34 @@ export default function ImplantsPage() {
                   <option value={3}>{t('implants.entropyEncrypt')}</option>
                 </select>
               </div>
+              {os === 'windows' && (
+                <>
+                  <div className="field">
+                    <label>{t('implants.donutBypass')}</label>
+                    <select
+                      value={shellcodeBypass}
+                      onChange={(e) => setShellcodeBypass(Number(e.target.value))}
+                    >
+                      <option value={1}>{t('implants.bypassNone')}</option>
+                      <option value={2}>{t('implants.bypassAbort')}</option>
+                      <option value={3}>{t('implants.bypassContinue')}</option>
+                    </select>
+                    <p className="muted">{t('implants.donutBypassHint')}</p>
+                  </div>
+                  <div className="field">
+                    <label>{t('implants.donutExitOpt')}</label>
+                    <select
+                      value={shellcodeExitOpt}
+                      onChange={(e) => setShellcodeExitOpt(Number(e.target.value))}
+                    >
+                      <option value={1}>{t('implants.exitThread')}</option>
+                      <option value={2}>{t('implants.exitProcess')}</option>
+                      <option value={3}>{t('implants.exitBlock')}</option>
+                    </select>
+                    <p className="muted">{t('implants.donutExitHint')}</p>
+                  </div>
+                </>
+              )}
             </>
           )}
           {(c2Type === 'http' || c2Type === 'https') && (
@@ -724,6 +819,11 @@ export default function ImplantsPage() {
                   </option>
                 ))}
               </select>
+              {httpC2Blocked ? (
+                <p className="warn-hint">{t('implants.httpC2DefaultBlocked')}</p>
+              ) : (
+                <p className="muted">{t('implants.httpC2Hint')}</p>
+              )}
             </div>
           )}
           <div className="field check">
@@ -839,7 +939,12 @@ export default function ImplantsPage() {
             </label>
           </div>
           <div className="field span-all form-actions">
-            <button type="button" className="btn primary" onClick={generate} disabled={generating}>
+            <button
+              type="button"
+              className="btn primary"
+              onClick={generate}
+              disabled={generating || httpC2Blocked}
+            >
               {generating ? t('implants.generating') : t('implants.generate')}
             </button>
           </div>

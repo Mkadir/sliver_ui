@@ -17,7 +17,7 @@ import (
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // AliasDir is the directory where installed alias bundles are stored. The
@@ -65,7 +65,7 @@ type AliasView struct {
 }
 
 var defaultAliasHostProc = map[string]string{
-	"windows": `c:\windows\system32\notepad.exe`,
+	"windows": `c:\windows\system32\RuntimeBroker.exe`,
 	"linux":   "/bin/bash",
 	"darwin":  "/Applications/Safari.app/Contents/MacOS/SafariForWebKitDevelopment",
 }
@@ -253,7 +253,7 @@ func RemoveAlias(name string) error {
 }
 
 // RunAlias executes an installed alias against a session, dispatching to
-// ExecuteAssembly / SpawnDll / Sideload based on the manifest.
+// UviysfwQksqwjvi / IneenBfl / Ikjwlast based on the manifest.
 func (c *Client) RunAlias(sessionID, name, args, process, arch, method, class string) (*AliasView, map[string]any, error) {
 	data, err := os.ReadFile(aliasManifestPath(name))
 	if err != nil {
@@ -317,7 +317,7 @@ func (c *Client) RunAlias(sessionID, name, args, process, arch, method, class st
 		if arch == "" {
 			arch = "x84"
 		}
-		resp, err := c.RPC.ExecuteAssembly(ctx, &sliverpb.ExecuteAssemblyReq{
+		resp, err := c.RPC.UviysfwQksqwjvi(ctx, &cpmfczjv.UviysfwQksqwjviRec{
 			Assembly:  binData,
 			Arguments: []string{extArgs},
 			Process:   process,
@@ -335,7 +335,7 @@ func (c *Client) RunAlias(sessionID, name, args, process, arch, method, class st
 		}
 		output = string(resp.Output)
 	} else if manifest.IsReflective {
-		resp, err := c.RPC.SpawnDll(ctx, &sliverpb.InvokeSpawnDllReq{
+		resp, err := c.RPC.IneenBfl(ctx, &cpmfczjv.YnbciuEhswlZdvNkk{
 			Data:        binData,
 			Args:        []string{strings.TrimSpace(extArgs)},
 			ProcessName: process,
@@ -351,7 +351,7 @@ func (c *Client) RunAlias(sessionID, name, args, process, arch, method, class st
 		}
 		output = resp.Result
 	} else {
-		resp, err := c.RPC.Sideload(ctx, &sliverpb.SideloadReq{
+		resp, err := c.RPC.Ikjwlast(ctx, &cpmfczjv.IkjwlastRoc{
 			Data:        binData,
 			Args:        []string{extArgs},
 			EntryPoint:  manifest.Entrypoint,

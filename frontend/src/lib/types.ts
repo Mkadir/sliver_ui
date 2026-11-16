@@ -105,6 +105,10 @@ export interface ImplantConfig {
   sgn_enabled?: boolean
   /** Donut entropy: 1=none, 2=names, 3=names+encrypt (Windows shellcode). */
   shellcode_entropy?: number
+  /** Donut AMSI/WLDP bypass: 1=none, 2=abort, 3=continue (signatured patch). */
+  shellcode_bypass?: number
+  /** Donut exit: 1=thread, 2=process, 3=block. */
+  shellcode_exitopt?: number
   /** NONE | SHIKATA_GA_NAI | XOR | XOR_DYNAMIC */
   shellcode_encoder?: string
   /** Delete same-named build on the server before generate. */
@@ -113,6 +117,8 @@ export interface ImplantConfig {
   canary_domains?: string[]
   /** CLI `generate --external-builder` — RPC GenerateExternal, not an ImplantConfig field. */
   external_builder_name?: string
+  /** Unique name suffix, force obfuscate, branding clean of returned bytes. */
+  polymorph?: boolean
 }
 
 export interface ShellcodeEncoderArch {
@@ -142,6 +148,20 @@ export interface StageGenerateResult {
   prepend_size: boolean
 }
 
+export interface ForkRewriteResult {
+  root: string
+  module: string
+  new_module?: string
+  dry_run: boolean
+  files: number
+  hits: Record<string, number>
+  changed: string[]
+  skipped?: string[]
+  next: string[]
+  note: string
+  needs_ui_build: boolean
+}
+
 export interface LoaderBuildResult {
   filename: string
   data_b64: string
@@ -152,6 +172,15 @@ export interface LoaderBuildResult {
   persistence: string
   rdi: boolean
   payload_size: number
+  engine?: string
+  dll_filename?: string
+  dll_data_b64?: string
+  clean?: {
+    replaced?: string[]
+    remaining?: string[]
+    export?: string
+    note?: string
+  }
 }
 
 export interface StageListenerResult {
@@ -633,6 +662,7 @@ export interface ImplantConfigView {
   BeaconJitter: number
   C2: { URL: string }[]
   CanaryDomains?: string[]
+  Exports?: string[]
 }
 
 export interface Alias {

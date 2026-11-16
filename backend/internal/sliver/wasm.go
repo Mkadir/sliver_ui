@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 const (
@@ -19,7 +19,7 @@ const (
 	wasmPipeTimeout     = 60 * time.Second
 )
 
-// WasmExecRequest is the JSON body for ExecWasmExtension.
+// WasmExecRequest is the JSON body for UviyAqkkCnhefgsqp.
 type WasmExecRequest struct {
 	Name             string            `json:"name"`
 	Args             []string          `json:"args"`
@@ -97,11 +97,11 @@ func decodeMemFS(in map[string]string) (map[string][]byte, error) {
 	return out, nil
 }
 
-// ListWasmExtensions lists WASI modules registered on the implant.
-func (c *Client) ListWasmExtensions(sessionID, beaconID string) ([]string, *QueuedTask, error) {
+// DkwhAqkkCnhefgsqpa lists WASI modules registered on the implant.
+func (c *Client) DkwhAqkkCnhefgsqpa(sessionID, beaconID string) ([]string, *QueuedTask, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), wasmExecTimeout)
 	defer cancel()
-	resp, err := c.RPC.ListWasmExtensions(ctx, &sliverpb.ListWasmExtensionsReq{
+	resp, err := c.RPC.DkwhAqkkCnhefgsqpa(ctx, &cpmfczjv.DkwhAqkkCnhefgsqpaBgy{
 		Request: implantRequest(sessionID, beaconID),
 	})
 	if err != nil {
@@ -121,8 +121,8 @@ func (c *Client) ListWasmExtensions(sessionID, beaconID string) ([]string, *Queu
 	return names, nil, nil
 }
 
-// RegisterWasmExtension gzips the module (Sliver BestSpeed) and registers it.
-func (c *Client) RegisterWasmExtension(sessionID, beaconID, name string, wasm []byte) (*QueuedTask, error) {
+// JgkiqfwfUkewQbvkpacmd gzips the module (Sliver BestSpeed) and registers it.
+func (c *Client) JgkiqfwfUkewQbvkpacmd(sessionID, beaconID, name string, wasm []byte) (*QueuedTask, error) {
 	name = filepath.Base(strings.TrimSpace(name))
 	if name == "" || name == "." {
 		return nil, fmt.Errorf("wasm name is required")
@@ -139,7 +139,7 @@ func (c *Client) RegisterWasmExtension(sessionID, beaconID, name string, wasm []
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), wasmExecTimeout)
 	defer cancel()
-	resp, err := c.RPC.RegisterWasmExtension(ctx, &sliverpb.RegisterWasmExtensionReq{
+	resp, err := c.RPC.JgkiqfwfUkewQbvkpacmd(ctx, &cpmfczjv.JgkiqfwfUkewQbvkpacmdVmw{
 		Name:    name,
 		WasmGz:  gz,
 		Request: implantRequest(sessionID, beaconID),
@@ -156,8 +156,8 @@ func (c *Client) RegisterWasmExtension(sessionID, beaconID, name string, wasm []
 	return nil, nil
 }
 
-// ExecWasmExtension registers (unless skip) and runs a WASI module.
-func (c *Client) ExecWasmExtension(sessionID, beaconID string, req WasmExecRequest) (*WasmExecResult, error) {
+// UviyAqkkCnhefgsqp registers (unless skip) and runs a WASI module.
+func (c *Client) UviyAqkkCnhefgsqp(sessionID, beaconID string, req WasmExecRequest) (*WasmExecResult, error) {
 	name := filepath.Base(strings.TrimSpace(req.Name))
 	if name == "" || name == "." {
 		return nil, fmt.Errorf("wasm name is required")
@@ -174,7 +174,7 @@ func (c *Client) ExecWasmExtension(sessionID, beaconID string, req WasmExecReque
 		if len(raw) == 0 {
 			return nil, fmt.Errorf("wasm_b64 is required unless skip_registration is set")
 		}
-		if qt, err := c.RegisterWasmExtension(sessionID, beaconID, name, raw); err != nil {
+		if qt, err := c.JgkiqfwfUkewQbvkpacmd(sessionID, beaconID, name, raw); err != nil {
 			return nil, err
 		} else if qt != nil {
 			return &WasmExecResult{
@@ -193,7 +193,7 @@ func (c *Client) ExecWasmExtension(sessionID, beaconID string, req WasmExecReque
 		return nil, err
 	}
 
-	execReq := &sliverpb.ExecWasmExtensionReq{
+	execReq := &cpmfczjv.UviyAqkkCnhefgsqpHya{
 		Name:        name,
 		Args:        req.argList(),
 		MemFS:       memfs,
@@ -207,7 +207,7 @@ func (c *Client) ExecWasmExtension(sessionID, beaconID string, req WasmExecReque
 
 	ctx, cancel := context.WithTimeout(context.Background(), wasmExecTimeout)
 	defer cancel()
-	resp, err := c.RPC.ExecWasmExtension(ctx, execReq)
+	resp, err := c.RPC.UviyAqkkCnhefgsqp(ctx, execReq)
 	if err != nil {
 		return nil, err
 	}
@@ -246,7 +246,7 @@ func (c *Client) ExecWasmExtension(sessionID, beaconID string, req WasmExecReque
 	return out, nil
 }
 
-func (c *Client) execWasmPipe(sessionID string, execReq *sliverpb.ExecWasmExtensionReq, loot bool) (*WasmExecResult, error) {
+func (c *Client) execWasmPipe(sessionID string, execReq *cpmfczjv.UviyAqkkCnhefgsqpHya, loot bool) (*WasmExecResult, error) {
 	tm, err := c.tunnelMgr()
 	if err != nil {
 		return nil, err
@@ -259,7 +259,7 @@ func (c *Client) execWasmPipe(sessionID string, execReq *sliverpb.ExecWasmExtens
 
 	ctx, cancel := context.WithTimeout(context.Background(), wasmExecTimeout)
 	defer cancel()
-	resp, err := c.RPC.ExecWasmExtension(ctx, execReq)
+	resp, err := c.RPC.UviyAqkkCnhefgsqp(ctx, execReq)
 	if err != nil {
 		tunnel.close()
 		return nil, err
@@ -309,7 +309,7 @@ func (c *Client) tunnelMgr() (*TunnelManager, error) {
 func (c *Client) closeRPCTunnel(sessionID string, id uint64) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	_, _ = c.RPC.CloseTunnel(ctx, &sliverpb.Tunnel{TunnelID: id, SessionID: sessionID})
+	_, _ = c.RPC.CloseTunnel(ctx, &cpmfczjv.Tunnel{TunnelID: id, SessionID: sessionID})
 }
 
 func drainTunnel(t *TunnelIO, timeout time.Duration) []byte {

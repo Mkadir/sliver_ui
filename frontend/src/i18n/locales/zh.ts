@@ -528,7 +528,7 @@ export default {
     empty: '暂无构建',
     genTitle: '生成植入体',
     opsecHint:
-      'OPSEC：普通植入体名称、HTTPS + HTTP C2 配置；Windows 服务用 format=Service。混淆/规避仅为编译期选项 — RDI、编码器与 stage-0 请用「加载器」。无法保证免杀。',
+      'Windows 默认 format=shared，再在加载器里磁盘 LoadLibrary（MEM_IMAGE）。HTTPS 需要非 default 的 HTTP C2 配置。混淆/规避仅为编译期选项。唯一哈希和 C 包装不是免杀。',
     name: '名称',
     os: '系统',
     arch: '架构',
@@ -548,9 +548,15 @@ export default {
     beaconHint: '信标植入体会休眠并按该间隔回连。任务排队直到下次回连。会话植入体保持交互。',
     beaconShort: '信标',
     obfuscate: '混淆',
+    polymorph: '每次生成都多态',
+    polymorphHint:
+      '唯一名称后缀、保持 garble、shellcode 用 Donut 熵 3，并等长改写下载字节中的 bishopfox/buildinfo/COM 导出。Protobuf RPC 名（GetJitter、sliverpb…）保留，以便本 UI 能开会话。回连后内存 YARA 仍可能命中那些串。不是免杀。',
     debug: '调试',
     evasion: '规避',
     httpC2Profile: 'HTTP C2 配置',
+    httpC2Hint: '库存 default 使用公开的 .woff/.js/.php 路径。请选 ms-update 或自定义配置。',
+    httpC2DefaultBlocked:
+      'HTTP/HTTPS 生成需要非 default 的 HTTP C2 配置。列表为空时请在 HTTP C2 页保存 ms-update。',
     trafficEncoders: '启用流量编码器',
     trafficEncoderList: '编码器',
     limitDomainJoined: '要求域加入主机',
@@ -587,7 +593,7 @@ export default {
     continueLoaders: '继续到加载器',
     sendToLoaders: '发送到加载器',
     generatedContinue:
-      '已生成：{{msg}}。shared/shellcode 可在加载器中继续处理（RDI / 编码 / stage-0）。',
+      '已生成：{{msg}}。Windows shared：加载器 → 生成 EXE（磁盘 LoadLibrary）。shellcode 包装是 Unbacked PIC。',
     replaceExisting: '覆盖同名已有构建',
     nameTakenHint:
       '已存在名为「{{name}}」的构建。请改名、勾选「覆盖同名」、删除旧行，或对该构建使用下载 / 重新生成。',
@@ -617,6 +623,23 @@ export default {
     spoofDone: '已将捐赠元数据应用到 {{name}}',
     spoofWindowsOnly: '伪装元数据仅适用于 Windows PE 构建。',
     spoofPickBuild: 'Windows 构建',
+    formatWrapHintExe:
+      '加载器包装需要 format=shellcode（Donut PIC）。这个 EXE 是成品植入体，不是包装输入。',
+    formatWrapHintShellcode: '可送到加载器 → 生成 EXE。C2 必须匹配活动监听器。',
+    formatWrapHintShared:
+      '加载器会打成 C EXE + 同目录 DLL（磁盘 LoadLibrary，MEM_IMAGE）。工具 → RDI 是 Unbacked PIC。',
+    donutBypass: 'Donut AMSI/WLDP 绕过',
+    donutBypassHint:
+      '1 = 无（本 UI 默认）。Sliver CLI 默认 3 会在已签名的 AMSI patch（Win32/AMSI_Patch_T.B13）失败后继续。这里不会新增 patch。',
+    bypassNone: '1 — 无（不打补丁）',
+    bypassAbort: '2 — 失败则中止',
+    bypassContinue: '3 — 失败后继续（已签名补丁）',
+    donutExitOpt: 'Donut 退出',
+    donutExitHint:
+      '3 = 载荷结束后 Donut 阻塞。若 PIC 返回，包装宿主也会保持存活。这不是免杀。',
+    exitThread: '1 — 退出线程',
+    exitProcess: '2 — 退出进程',
+    exitBlock: '3 — 阻塞（保持进程）',
   },
   loaders: {
     title: '加载器',
@@ -624,11 +647,12 @@ export default {
     whatIsThis:
       '选择 shellcode 或 shared 构建。UI 主机会按该 OS/架构编译加载器，你直接下载成品二进制。Windows DLL 会先做 RDI。仅实验室 — 不是免杀。',
     disclaimer:
-      'Linux shellcode 映射为 RWX，fork 后在 8MiB 栈上 CALL。Windows 会加密嵌入数据，先 PAGE_NOACCESS 再 RW 分配，在堆外解密，翻到 RWX，并在独立栈上 CALL（不用 CreateThread）。Donut/SGN 仍需要可写窗口。启动前短暂延迟用于跳过部分 AV 模拟器。植入体仍需要其 C2 URL 上有活动监听器。这不是保证免杀。',
+      'Linux shellcode 映射为 RWX，fork 后在 8MiB 栈上 CALL。Windows amd64/386 包装是 MinGW C（无 Go 运行时），因此桩不是 Go PE。它仍是 VirtualAlloc+CALL Sliver PIC — 不会在内存中隐藏 sliverpb，也不会阻止 Defender 在回连后杀掉会话。唯一 SHA-256 只改哈希 IOC。这不是免杀。',
     tab: {
       wrap: '生成 EXE',
       tools: 'RDI / 编码',
       stage: 'Stage 监听',
+      fork: 'Sliver fork',
       guide: '说明',
     },
     noBlob: '尚未加载载荷',
@@ -638,22 +662,55 @@ export default {
     building: '正在编译 {{os}}/{{arch}}…',
     os: '操作系统',
     step1: '加载 shellcode',
-    step1Hint: '从服务器拉取 format=shellcode（或 shared）构建，或上传 .bin。',
+    step1Hint: '拉取 Windows format=shared 构建（磁盘 LoadLibrary）或 shellcode，或上传 .bin。',
     step2: '生成可执行文件',
-    step2Hint: '本机 Go 按植入的 OS/架构交叉编译加载器。下载的就是成品，无需 ZIP，也无需本地再编译。',
+    step2Hint: '本机编译加载器。Windows amd64/386：MinGW C。Windows arm64 与 Linux/macOS：Go。下载的就是成品。',
     pickBuild: '服务器上的 shellcode / shared 构建',
     selectBuild: '选择构建…',
     loadBuild: '加载构建',
     upload: '上传 .bin',
-    sourceHint: '请在以下页面生成 format=shellcode（或 shared）：',
+    sourceHint: '请在以下页面生成 format=shared（Windows）或 shellcode：',
     loadedBuild: '已加载 {{name}}（{{size}} 字节）',
     uploaded: '已上传 {{name}}（{{size}} 字节）',
     blobReady: '载荷就绪：{{size}} 字节 · SHA-256 {{hash}}…',
     transform: '高级转换',
     toolsHint: '可选。RDI 将 DLL 转为 PIC shellcode。编码器只改字节（不是加壳器）。',
-    rdi: '先通过 RDI 转换 DLL',
+    rdi: '先通过 RDI 转换 DLL（Unbacked PIC）',
     rdiFn: 'RDI 导出 / 函数名',
-    rdiAuto: 'Windows 共享库：编译前会自动运行 RDI。',
+    rdiAuto: '非 Windows 共享库：包装仍编译已加载的 blob。Windows shared 使用磁盘 LoadLibrary（见包装页）。',
+    diskDllHint:
+      '这是 Windows DLL。包装会生成小型 C EXE，从同一目录 LoadLibrary 该 DLL 并调用 StartW。两个文件都会下载。这是磁盘 MEM_IMAGE，不是 RDI/无映像 PIC。仍需要清理过字符串的植入体；不是 Defender 绕过。',
+    wrapDownloadedDll: '同时下载了 {{name}}。请把 EXE 和 DLL 放在同一文件夹。',
+    diskDllCopy:
+      '磁盘 LoadLibrary：EXE 与 DLL 一起投放。持久化会把旁边的 DLL 复制到启动文件夹。工具 → RDI 才是旧的内存 PIC 路径。',
+    cleanHint:
+      'Windows 包装会原地改写 branding、Go buildinfo 和未使用的 COM 导出（等长）。Protobuf RPC 名（sliverpb、GetJitter、ScreenshotReq…）保留 — 原版 sliver-server 需要它们。编译后会列出剩余命中。这不是 Sliver fork，也不是 Defender 绕过。',
+    cleanReplaced: '已等长改写 {{count}} 条 branding/buildinfo/导出字符串。',
+    cleanRemaining:
+      '仍有 {{count}} 条家族字符串（protobuf RPC / sliverpb）。原版 teamserver 无法使用改过 protobuf 的植入体。要改那些名字需要 fork Sliver。',
+    forkTitle: 'Sliver 源码 fork（本 UI 主机）',
+    forkHint:
+      '改写本机上的 BishopFox Sliver 检出。Branding 改 Go module 路径（本 UI 仍说原版 protobuf）。Proto 模式等长改写家族 RPC 名，并需要用该树重新编译本 UI。',
+    forkWarn:
+      'Apply 会写入检出。请先 Dry-run。不是 Defender 绕过。不要指向 sliver-ui。Proto 模式会让原版 sliver-client 失效，直到 server 和本 UI 都重建。',
+    forkRoot: 'Sliver 检出的绝对路径',
+    forkModule: '新的 Go module 路径（branding）',
+    forkBranding: 'Branding：改写 github.com/bishopfox/sliver module 路径',
+    forkProto: 'Proto：等长改名 GetJitter / sliverpb / ScreenshotReq（需重建 UI）',
+    forkGenerator: 'Generator：给 sliver-server 植入编译器打补丁（Donut none、仅 StartW 导出、内联 max-errors）',
+    forkGeneratorHint:
+      '本 UI 是客户端。EXE/shellcode/shared 由 sliver-server 从 implant/ 与 server/generate/ 编译。这些补丁改那份源码。重建 sliver-server，用它生成。Obfuscate 开启时 garble 已是 -seed=random。除非勾选 Proto，protobuf 名不变。',
+    forkBrandingHint:
+      'Branding 之后：从该检出编译 sliver-server，在那里生成 SHARED 植入体，再用磁盘 LoadLibrary 包装。本 UI 不用动。',
+    forkProtoHint:
+      'Proto 之后：在 sliver-ui/backend 执行 go mod edit -replace github.com/bishopfox/sliver=<检出>，go build，重启。原版 sliver-client 将不可用。',
+    forkDryRun: 'Dry-run',
+    forkApply: '应用改写',
+    forkRunning: '正在改写检出…',
+    forkDryDone: 'Dry-run 完成 — 未写入文件',
+    forkApplyDone: '检出已改写',
+    forkNeedsUI: '需重建本 UI',
+    forkRotate: '每次 Proto Apply 使用新随机种子，家族名与上次不同。每次 Proto Apply 后重建 server（以及本 UI）。',
     encoder: 'Shellcode 编码器',
     arch: '架构',
     iterations: '迭代次数',
@@ -665,18 +722,19 @@ export default {
     download: '下载原始 .bin',
     needShellcode: '请先加载 shellcode',
     downloadExeZip: '生成可执行文件',
-    wrapDownloaded: '已生成 {{name}}（{{size}} 字节，{{os}}/{{arch}}）· SHA-256 {{hash}}…',
+    wrapDownloaded: '已生成 {{name}}（{{size}} 字节，{{os}}/{{arch}}）· {{engine}} · SHA-256 {{hash}}…',
     wrapResult: '下载文件名：{{name}}',
-    wrapCompileHint: '由 sliver-ui 主机上的 Go 编译。该机器需要安装 Go 工具链。',
+    wrapCompileHint:
+      '由 sliver-ui 主机编译。Windows amd64/386 需要 mingw-w64 gcc（apt install gcc-mingw-w64-x86-64）。其他目标需要 Go。缺少 mingw 返回 503。',
     runHint:
-      '在匹配的 OS/架构上运行下载的文件。Windows 执行前会等待约 2 秒（模拟器检测）。隐藏控制台时父进程会立即退出 — 请看 Sessions 和 Beacons。若没有回连，说明该构建的 C2（协议/主机/端口）没有监听器。',
+      '在匹配的 OS/架构上运行下载的文件。Windows 会等待约 2 秒（玩具模拟器 Sleep 跳过检测），需要 ≥2 GiB RAM，计算机名为 HAL9TH（MsMpEng 模拟器主机）时退出。隐藏控制台只藏窗口。会话植入体看 Sessions，信标看 Beacons。若没有回连，说明该构建的 C2 没有匹配监听器。',
     hideConsole: '隐藏控制台 / 转入后台',
     hideConsoleHint:
       '与启动持久化分开，默认已开启。Windows：GUI 子系统（无控制台）。Linux/macOS：setsid 再执行，父进程立即退出。隐藏窗口不等于躲避 EDR。',
     xorKey: '可选额外 XOR 密钥',
     xorKeyPh: '留空 = 额外随机密钥（可选）',
     xorUnique:
-      '每次编译都会加入唯一 nonce、填充和链接器 build ID，因此即使 XOR 密钥和载荷相同，SHA256 也会变化。VirusTotal 仍会沙箱运行新哈希；这只避开精确哈希拦截。',
+      '每次编译都会加入唯一 nonce 和填充，因此 SHA256 会变化。这只避开精确哈希查找。MinGW C 桩去掉 Go PE 形态 ML（Wacatac/gopclntab）。解密后 Defender 仍会在本进程中看到 Sliver 植入体。',
     stageTitle: 'Stage-0（网络拉取 — 进阶）',
     stageHint:
       '另一条路径：小 stager 经 TCP 下载 stage-2。若要把 shellcode 打进本地 EXE，请用「包装 → EXE」。AES 密钥须 16/24/32 字符；IV 恰好 16。',
@@ -700,7 +758,7 @@ export default {
     guide: {
       wrap: '最常见：Implants → format=shellcode（C2 与活动监听器一致）→ 加载器 → 生成可执行文件 → 在实验室运行下载的二进制。',
       localInject: '已有会话：工具 → 可选编码 → 会话 → 高级 → execute-shellcode。',
-      rdi: '已有 DLL（shared）：生成 EXE 会自动 RDI，或用工具 → RDI 再注入。',
+      rdi: '已有 DLL（shared）：生成 EXE 会下载 C LoadLibrary 宿主和 DLL。放在同一文件夹。工具 → RDI 才是内存 PIC。',
       stage: '要极小首包：Stage-0 监听 + 自定义拉取 stager（运行前载荷不落盘）。',
       sideload: '侧载：在签名宿主旁使用普通 DLL 名。',
       external: '更强打包：Donut/ScareCrow/PEzor/ShellcodePack（UI 外）。',
@@ -740,6 +798,20 @@ export default {
     stageListenerEmpty: '无活跃的 stage 监听器',
     stageStopListener: '停止',
     stageStopDone: 'Stage 监听器 {{id}} 已停止',
+    c2Missing:
+      '该构建的 C2 没有匹配的在线监听器（协议 + 端口）。仍可编译；在该任务启动之前植入体不会回连。',
+    c2Loopback:
+      'C2 是 127.0.0.1 / localhost。除非 teamserver 就在同一系统上，否则这是 Windows 客户机自己。请填写植入体能到达的主机。',
+    beaconWatch:
+      '该构建是信标。请看 Beacons，不要看 Sessions。至少等待一个间隔加上抖动。',
+    labConsole: '实验室核对：关闭隐藏控制台，以便看到 panic 和暂停。',
+    labConsoleBtn: '实验室：显示控制台',
+    keepAliveHint:
+      '若 PIC 返回，Windows 宿主会 Sleep 保持存活，而不是 ExitProcess。SLIV_BG=1 会跳过挂起（测试用）。保持进程并不能对 Defender 隐藏植入体。',
+    nativeCHint:
+      'C 包装是原生 PE（约数十 KiB + 载荷），不是 Go 运行时。它可以改变未签名包装是否像 Go 恶意软件。它不能阻止 Defender 在回连后杀掉会话（sliverpb / CommandAndControl）。',
+    defenderHint:
+      '若活动会话被杀，请看 Protection History（事件 1116/1117/1015）和 Get-MpThreat。解密后加载器的 XOR/唯一哈希/RWX 已经用完。唯一哈希不是 Defender 绕过。',
   },
   events: {
     title: '事件',
@@ -792,6 +864,8 @@ export default {
     disconnectedMsg: '\r\n[*] 已断开连接。',
     reconnecting: '\r\n[*] 连接已断开，正在重连…\r\n',
     errorMsg: '\r\n[!] 连接错误。\r\n',
+    shellWarn:
+      'Windows 交互 shell 默认命令行是 powershell.exe -NoExit UTF-8（Microsoft 2022 狩猎规则）。交互 shell 特征高。格式/包装不会关闭这一层。',
   },
   detail: {
     title: '会话',
@@ -963,6 +1037,8 @@ export default {
     migrate: '迁移',
     dump: '转储',
     confirmMigrate: '确定将会话迁移到进程 {{pid}}？',
+    crtWarn:
+      '迁移使用远程注入（VirtualAllocEx → WriteProcessMemory → CreateRemoteThread）。更换目标 PID 不会掩盖这一层。',
     empty: '未获取到进程',
     failed: '失败',
   },
@@ -1207,6 +1283,10 @@ export default {
     bofOk: '已运行 {{name}}',
     bofEmpty: '未安装别名。打开武器库安装一个。',
     psexecDefaultHint: '使用普通服务名。「Sliver」是高特征默认值。',
+    processHint:
+      '默认曾是 notepad.exe（Microsoft 2022 狩猎规则）。请选择普通宿主进程。注入对 EDR 仍可见。',
+    crtWarn:
+      'Sideload / spawn-dll / execute-assembly / migrate 使用远程注入（VirtualAllocEx → WriteProcessMemory → CreateRemoteThread）。磁盘 LoadLibrary 包装不会掩盖这一层。',
   },
   tokens: {
     title: '令牌操作',
@@ -1218,6 +1298,8 @@ export default {
     password: '密码',
     domain: '域',
     hostingProcess: '宿主进程',
+    getSystemHint:
+      '默认曾是 spoolsv.exe（Microsoft 2022 狩猎规则）。请选择普通 SYSTEM 宿主进程。注入对 EDR 仍可见。',
     execute: '执行',
     revToSelf: '恢复自身令牌',
     windowsOnly: '令牌操作仅适用于 Windows 会话。',
