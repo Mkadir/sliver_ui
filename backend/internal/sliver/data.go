@@ -7,6 +7,7 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"google.golang.org/protobuf/proto"
 )
 
 // SessionView is the JSON shape returned by the API.
@@ -35,6 +36,7 @@ type SessionView struct {
 type BeaconView struct {
 	ID            string `json:"ID"`
 	Name          string `json:"Name"`
+	UUID          string `json:"UUID"`
 	Hostname      string `json:"Hostname"`
 	Username      string `json:"Username"`
 	OS            string `json:"OS"`
@@ -150,8 +152,21 @@ func (c *Client) Jobs() ([]JobView, error) {
 	return out, nil
 }
 
+// ListenerStartOptions carries optional camouflage fields for HTTP(S) listeners.
+type ListenerStartOptions struct {
+	Domain          string
+	Website         string
+	ACME            bool
+	EnforceOTP      bool
+	LongPollTimeout int64
+	LongPollJitter  int64
+}
+
 // StartListener starts a new listener (mTLS, HTTP(S), DNS, WireGuard).
-func (c *Client) StartListener(jobType, addr string, port uint32, tls bool) (uint32, error) {
+func (c *Client) StartListener(jobType, addr string, port uint32, tls bool, opts *ListenerStartOptions) (uint32, error) {
+	if opts == nil {
+		opts = &ListenerStartOptions{}
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
 	switch jobType {
@@ -166,8 +181,14 @@ func (c *Client) StartListener(jobType, addr string, port uint32, tls bool) (uin
 		return resp.JobID, nil
 	case "http", "https":
 		req := &clientpb.HTTPListenerReq{
-			Host: addr,
-			Port: port,
+			Host:            addr,
+			Port:            port,
+			Domain:          opts.Domain,
+			Website:         opts.Website,
+			ACME:            opts.ACME,
+			EnforceOTP:      opts.EnforceOTP,
+			LongPollTimeout: opts.LongPollTimeout,
+			LongPollJitter:  opts.LongPollJitter,
 		}
 		if jobType == "https" || tls {
 			req.Secure = true
@@ -178,8 +199,12 @@ func (c *Client) StartListener(jobType, addr string, port uint32, tls bool) (uin
 		}
 		return resp.JobID, nil
 	case "dns":
+		domains := []string{addr}
+		if opts.Domain != "" {
+			domains = []string{opts.Domain}
+		}
 		resp, err := c.RPC.StartDNSListener(ctx, &clientpb.DNSListenerReq{
-			Domains: []string{addr},
+			Domains: domains,
 		})
 		if err != nil {
 			return 0, err
@@ -234,16 +259,33 @@ func eventToView(e *clientpb.Event) EventView {
 		}
 		ev.Job = &JobView{ID: e.Job.ID, Name: e.Job.Name, Type: e.Job.Protocol, Port: e.Job.Port, Domains: domains}
 	}
+	// v1.7.3 clientpb.Event has no Beacon field; the server marshals the
+	// beacon (or task) into Data.
+	if len(e.Data) > 0 {
+		ev.Data["raw"] = string(e.Data)
+		switch e.EventType {
+		case "beacon-registered":
+			b := &clientpb.Beacon{}
+			if err := proto.Unmarshal(e.Data, b); err == nil && b.GetID() != "" {
+				bv := beaconToView(b)
+				ev.Beacon = &bv
+			}
+		case "beacon-taskresult":
+			task := &clientpb.BeaconTask{}
+			if err := proto.Unmarshal(e.Data, task); err == nil && task.GetID() != "" {
+				ev.Data["task_id"] = task.ID
+				ev.Data["beacon_id"] = task.BeaconID
+				ev.Data["description"] = task.Description
+				ev.Data["state"] = task.State
+			}
+		}
+	}
 	return ev
 }
 
-// Events reads from the server event stream until an error or timeout.
-// Events collects server events by opening a streaming RPC and reading
-// until the context deadline. The Sliver Events stream only sends NEW
-// events from the moment the stream is opened — there is no replay of
-// historical events. A short timeout (3s) caused most polls to return
-// empty because events rarely arrive within that window. We use 10s
-// to give events a reasonable chance to arrive.
+// Events is a one-shot drain of the Sliver Events stream with a timeout.
+// The live UI uses EventHub (started from SetClient) instead: this method
+// opens a second stream and still cannot replay history.
 func (c *Client) Events() ([]EventView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
@@ -281,18 +323,28 @@ func sessionToView(s *clientpb.Session) SessionView {
 		LastCheckin:   unixTimeString(s.LastCheckin),
 		ActiveC2:      s.ActiveC2,
 		// Sliver v1.15.16 的 clientpb.Session 无 Locale 字段，留空
-		Locale:        "",
-		AgentVersion:  s.Version,
-		IsDead:        s.IsDead,
+		Locale:       "",
+		AgentVersion: s.Version,
+		IsDead:       s.IsDead,
 		// Sliver v1.15.16 无 IsInteractive 字段，用 !IsDead 作为近似
 		IsInteractive: !s.IsDead,
 	}
 }
 
 func beaconToView(b *clientpb.Beacon) BeaconView {
+	interval := durationToSeconds(b.Interval)
+	jitter := durationToSeconds(b.Jitter)
+	next := b.NextCheckin
+	// Generate used to store interval as seconds-in-a-Duration-field (60ns).
+	// The implant then reports NextCheckin = now+0, so the UI showed "now"
+	// for both columns. Fall back to last+interval so the row looks alive.
+	if next <= b.LastCheckin && interval > 0 {
+		next = b.LastCheckin + interval
+	}
 	return BeaconView{
 		ID:            b.ID,
 		Name:          b.Name,
+		UUID:          b.UUID,
 		Hostname:      b.Hostname,
 		Username:      b.Username,
 		OS:            b.OS,
@@ -300,9 +352,9 @@ func beaconToView(b *clientpb.Beacon) BeaconView {
 		Transport:     b.Transport,
 		RemoteAddress: b.RemoteAddress,
 		LastCheckin:   unixTimeString(b.LastCheckin),
-		NextCheckin:   unixTimeString(b.NextCheckin),
-		Interval:      b.Interval,
-		Jitter:        b.Jitter,
+		NextCheckin:   unixTimeString(next),
+		Interval:      interval,
+		Jitter:        jitter,
 		ActiveC2:      b.ActiveC2,
 	}
 }

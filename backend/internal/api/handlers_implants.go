@@ -3,6 +3,8 @@ package api
 import (
 	"encoding/base64"
 	"net/http"
+
+	"sliverui/internal/sliver"
 )
 
 // --- Backdoor ---
@@ -137,11 +139,11 @@ func (s *Server) handlePsExec(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Hostname     string `json:"hostname"`
-		ProfileName  string `json:"profile_name"`
-		ServiceName  string `json:"service_name"`
-		ServiceDesc  string `json:"service_desc"`
-		BinPath      string `json:"bin_path"`
+		Hostname    string `json:"hostname"`
+		ProfileName string `json:"profile_name"`
+		ServiceName string `json:"service_name"`
+		ServiceDesc string `json:"service_desc"`
+		BinPath     string `json:"bin_path"`
 	}
 	if !decodeBody(w, r, &req) {
 		return
@@ -158,4 +160,23 @@ func (s *Server) handlePsExec(w http.ResponseWriter, r *http.Request) {
 		"service": result["service"],
 		"host":    result["hostname"],
 	})
+}
+
+func (s *Server) handleSpoofMetadata(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	var req sliver.SpoofMetadataRequest
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	if req.ImplantName == "" {
+		req.ImplantName = r.PathValue("name")
+	}
+	if err := c.GenerateSpoofMetadata(&req); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
 }

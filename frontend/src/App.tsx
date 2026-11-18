@@ -3,7 +3,9 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { ConnectionProvider, useConnection } from './lib/connection'
+import { AuthProvider, useAuth } from './lib/auth'
 import { GROUPED_NAV, ICONS } from './lib/nav'
+import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import SessionsPage from './pages/SessionsPage'
 import SessionDetailPage from './pages/SessionDetailPage'
@@ -12,6 +14,8 @@ import ListenersPage from './pages/ListenersPage'
 import BeaconsPage from './pages/BeaconsPage'
 import BeaconDetailPage from './pages/BeaconDetailPage'
 import ImplantsPage from './pages/ImplantsPage'
+import LoadersPage from './pages/LoadersPage'
+import HttpC2Page from './pages/HttpC2Page'
 import SocksPage from './pages/SocksPage'
 import JobsPage from './pages/JobsPage'
 import TasksPage from './pages/TasksPage'
@@ -25,27 +29,61 @@ import EventsPage from './pages/EventsPage'
 import HostsPage from './pages/HostsPage'
 import WebsitesPage from './pages/WebsitesPage'
 import SettingsPage from './pages/SettingsPage'
+import OperatorsPage from './pages/OperatorsPage'
+import ArmoryPage from './pages/ArmoryPage'
 import Logo from './components/Logo'
+import CommandPalette from './components/CommandPalette'
 import { ToastProvider } from './components/common/Toast'
 import './App.css'
+import './pages/login.css'
 
 export default function App() {
   return (
     <ToastProvider>
-      <ConnectionProvider>
-        <AppLayout />
-      </ConnectionProvider>
+      <AuthProvider>
+        <AuthGate />
+      </AuthProvider>
     </ToastProvider>
+  )
+}
+
+function AuthGate() {
+  const { ready, enabled, authenticated } = useAuth()
+  const { t } = useTranslation()
+  if (!ready) {
+    return (
+      <div className="login-page">
+        <div className="login-card">
+          <div className="login-brand">
+            <Logo />
+            <div>
+              <h1>{t('app.title')}</h1>
+              <p>{t('app.connecting')}</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+  if (enabled && !authenticated) {
+    return <LoginPage />
+  }
+  return (
+    <ConnectionProvider>
+      <AppLayout />
+    </ConnectionProvider>
   )
 }
 
 function AppLayout() {
   const { connected, version, counts, ready } = useConnection()
+  const { enabled, user, logout } = useAuth()
   const { t, i18n } = useTranslation()
   const navigate = useNavigate()
   const location = useLocation()
 
   // 侧栏折叠 — 宽屏手动切换,窄屏默认收起;持久化到 localStorage
+  const [paletteOpen, setPaletteOpen] = useState(false)
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try {
       const stored = localStorage.getItem('sliverui-sidebar')
@@ -58,6 +96,17 @@ function AppLayout() {
   useEffect(() => {
     localStorage.setItem('sliverui-sidebar', collapsed ? '1' : '0')
   }, [collapsed])
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((v) => !v)
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [])
 
   const lang = i18n.language === 'zh' ? 'zh' : 'en'
   const toggleLang = () => {
@@ -104,8 +153,6 @@ function AppLayout() {
       case 'beacons':
         return counts.beacons
       case 'listeners':
-        return counts.jobs
-      case 'jobs':
         return counts.jobs
       case 'implants':
         return counts.builders
@@ -232,6 +279,29 @@ function AppLayout() {
             </div>
           </div>
           <div className="topbar-right">
+            <button
+              type="button"
+              className="lang-switch palette-trigger"
+              onClick={() => setPaletteOpen(true)}
+              title={t('palette.shortcut')}
+              aria-label={t('palette.title')}
+            >
+              {ICONS.search}
+              <span>{t('palette.title')}</span>
+              <kbd className="palette-kbd">{t('palette.shortcut')}</kbd>
+            </button>
+            {enabled && (
+              <button
+                type="button"
+                className="lang-switch sign-out"
+                onClick={() => void logout()}
+                title={user ? t('login.signedInAs', { user }) : t('login.signOut')}
+                aria-label={t('login.signOut')}
+              >
+                {ICONS.signOut}
+                <span>{t('login.signOut')}</span>
+              </button>
+            )}
             <div className={`server-status ${ready ? (connected ? 'ok' : 'bad') : ''}`}>
               <span className={`dot ${connected ? 'ok' : 'bad'}`} />
               <span className="server-status-text">
@@ -259,12 +329,16 @@ function AppLayout() {
               <Route path="/beacons/:id" element={<BeaconDetailPage />} />
               <Route path="/listeners" element={<ListenersPage />} />
               <Route path="/implants" element={<ImplantsPage />} />
+              <Route path="/loaders" element={<LoadersPage />} />
+              <Route path="/http-c2" element={<HttpC2Page />} />
               <Route path="/socks" element={<SocksPage />} />
               <Route path="/jobs" element={<JobsPage />} />
               <Route path="/tasks" element={<TasksPage />} />
               <Route path="/loot" element={<LootPage />} />
               <Route path="/canaries" element={<CanariesPage />} />
               <Route path="/aliases" element={<AliasesPage />} />
+              <Route path="/armory" element={<ArmoryPage />} />
+              <Route path="/operators" element={<OperatorsPage />} />
               <Route path="/files" element={<FilesPage />} />
               <Route path="/processes" element={<ProcessesPage />} />
               <Route path="/network" element={<NetworkPage />} />
@@ -278,6 +352,7 @@ function AppLayout() {
           </div>
         </main>
       </div>
+      <CommandPalette open={paletteOpen} onClose={() => setPaletteOpen(false)} />
       </div>
   )
 }

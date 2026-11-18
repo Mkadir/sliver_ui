@@ -5,15 +5,59 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"testing/fstest"
 )
 
+func TestMain(m *testing.M) {
+	dir, err := os.MkdirTemp("", "sliverui-api-")
+	if err != nil {
+		panic(err)
+	}
+	_ = os.Setenv("SLIVER_UI_DATA", dir)
+	_ = os.Setenv("SLIVER_UI_REACTIONS", filepath.Join(dir, "reactions.json"))
+	code := m.Run()
+	_ = os.RemoveAll(dir)
+	os.Exit(code)
+}
+
 func newRecorder(r *http.Request) *httptest.ResponseRecorder {
 	rec := httptest.NewRecorder()
 	New().Routes().ServeHTTP(rec, r)
 	return rec
+}
+
+func TestOperatorNotesWithoutClient(t *testing.T) {
+	t.Setenv("SLIVER_UI_DATA", t.TempDir())
+	s := New()
+	rec := httptest.NewRecorder()
+	s.Routes().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/operator/notes", nil))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d body=%s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+	var body map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := body["notes"]; !ok {
+		t.Fatalf("body = %v, want notes", body)
+	}
+
+	put := httptest.NewRequest(http.MethodPut, "/api/operator/notes/uuid-lab", strings.NewReader(`{"kind":"session","tags":["lab"],"comment":"x","campaign":"op"}`))
+	putRec := httptest.NewRecorder()
+	s.Routes().ServeHTTP(putRec, put)
+	if putRec.Code != http.StatusOK {
+		t.Fatalf("put status = %d body=%s", putRec.Code, putRec.Body.String())
+	}
+
+	audit := httptest.NewRecorder()
+	s.Routes().ServeHTTP(audit, httptest.NewRequest(http.MethodGet, "/api/operator/audit", nil))
+	if audit.Code != http.StatusOK {
+		t.Fatalf("audit status = %d", audit.Code)
+	}
 }
 
 func TestInfoWithoutClient(t *testing.T) {
@@ -27,6 +71,12 @@ func TestInfoWithoutClient(t *testing.T) {
 	}
 	if body["connected"] != false {
 		t.Fatalf("connected = %v, want false", body["connected"])
+	}
+	if _, ok := body["callback_hosts"]; !ok {
+		t.Fatal("callback_hosts missing from /api/info response")
+	}
+	if _, ok := body["callback_hosts"].([]any); !ok && body["callback_hosts"] != nil {
+		t.Fatalf("callback_hosts type = %T, want []any or nil", body["callback_hosts"])
 	}
 }
 
@@ -54,6 +104,12 @@ func TestEndpointsRequireClient(t *testing.T) {
 		{"loot rename", httptest.NewRequest(http.MethodPost, "/api/loot/l-1/rename", nil)},
 		{"compiler", httptest.NewRequest(http.MethodGet, "/api/compiler", nil)},
 		{"beacon open session", httptest.NewRequest(http.MethodPost, "/api/beacons/b-1/open-session", nil)},
+		{"beacon exec", httptest.NewRequest(http.MethodPost, "/api/beacons/b-1/exec", nil)},
+		{"beacon ps", httptest.NewRequest(http.MethodPost, "/api/beacons/b-1/ps", nil)},
+		{"beacon fs", httptest.NewRequest(http.MethodPost, "/api/beacons/b-1/fs", nil)},
+		{"beacon screenshot", httptest.NewRequest(http.MethodPost, "/api/beacons/b-1/screenshot", nil)},
+		{"beacon cancel task", httptest.NewRequest(http.MethodPost, "/api/beacons/b-1/tasks/t-1/cancel", nil)},
+		{"events ws", httptest.NewRequest(http.MethodGet, "/ws/events", nil)},
 		{"session close", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/close", nil)},
 		{"monitor start", httptest.NewRequest(http.MethodPost, "/api/monitor/start", nil)},
 		{"monitor stop", httptest.NewRequest(http.MethodPost, "/api/monitor/stop", nil)},
@@ -89,15 +145,36 @@ func TestEndpointsRequireClient(t *testing.T) {
 		{"msf", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/msf", nil)},
 		{"msf remote", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/msf/remote", nil)},
 		{"msf stage", httptest.NewRequest(http.MethodPost, "/api/msf/stage", nil)},
+		{"stage generate", httptest.NewRequest(http.MethodPost, "/api/stage/generate", nil)},
+		{"stage listeners", httptest.NewRequest(http.MethodPost, "/api/stage-listeners", nil)},
+		{"stage listeners list", httptest.NewRequest(http.MethodGet, "/api/stage-listeners", nil)},
+		{"stage listener stop", httptest.NewRequest(http.MethodDelete, "/api/stage-listeners/1", nil)},
 		{"backdoor", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/backdoor", nil)},
 		{"dll hijack", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/dll-hijack", nil)},
 		{"shellcode rdi", httptest.NewRequest(http.MethodPost, "/api/shellcode/rdi", nil)},
+		{"shellcode encoders", httptest.NewRequest(http.MethodGet, "/api/shellcode/encoders", nil)},
+		{"shellcode encode", httptest.NewRequest(http.MethodPost, "/api/shellcode/encode", nil)},
 		{"canaries", httptest.NewRequest(http.MethodGet, "/api/canaries", nil)},
 		{"exec shellcode", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/exec-shellcode", nil)},
 		{"psexec", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/psexec", nil)},
 		{"prune beacons", httptest.NewRequest(http.MethodPost, "/api/beacons/prune", nil)},
 		{"prune sessions", httptest.NewRequest(http.MethodPost, "/api/sessions/prune", nil)},
 		{"aliases", httptest.NewRequest(http.MethodGet, "/api/aliases", nil)},
+		{"external builders", httptest.NewRequest(http.MethodGet, "/api/external-builders", nil)},
+		{"armory index", httptest.NewRequest(http.MethodGet, "/api/armory", nil)},
+		{"armory install", httptest.NewRequest(http.MethodPost, "/api/armory/install", nil)},
+		{"traffic encoder add", httptest.NewRequest(http.MethodPost, "/api/traffic-encoders", nil)},
+		{"traffic encoder rm", httptest.NewRequest(http.MethodDelete, "/api/traffic-encoders/enc.wasm", nil)},
+		{"beacon reconfigure", httptest.NewRequest(http.MethodPost, "/api/beacons/b-1/reconfigure", nil)},
+		{"loot report", httptest.NewRequest(http.MethodGet, "/api/loot/report", nil)},
+		{"spoof metadata", httptest.NewRequest(http.MethodPost, "/api/implant-builds/foo/spoof-metadata", nil)},
+		{"wasm list", httptest.NewRequest(http.MethodGet, "/api/sessions/s-1/wasm", nil)},
+		{"wasm register", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/wasm", nil)},
+		{"wasm exec", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/wasm/exec", nil)},
+		{"beacon wasm list", httptest.NewRequest(http.MethodGet, "/api/beacons/b-1/wasm", nil)},
+		{"rportfwd list", httptest.NewRequest(http.MethodGet, "/api/sessions/s-1/rportfwd", nil)},
+		{"rportfwd start", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/rportfwd", nil)},
+		{"rportfwd stop", httptest.NewRequest(http.MethodDelete, "/api/sessions/s-1/rportfwd/1", nil)},
 		{"alias install", httptest.NewRequest(http.MethodPost, "/api/aliases", nil)},
 		{"alias remove", httptest.NewRequest(http.MethodDelete, "/api/aliases/some", nil)},
 		{"alias run", httptest.NewRequest(http.MethodPost, "/api/sessions/s-1/aliases/some/run", nil)},

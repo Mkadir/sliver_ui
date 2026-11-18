@@ -55,6 +55,13 @@ export const ICONS: Record<string, ReactNode> = {
       <circle cx="12" cy="12" r="2.5" />
     </svg>
   ),
+  loaders: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 3v10" />
+      <path d="M8 9l4 4 4-4" />
+      <rect x="4" y="15" width="16" height="5" rx="1.5" />
+    </svg>
+  ),
   socks: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="M4 7h11" />
@@ -146,6 +153,13 @@ export const ICONS: Record<string, ReactNode> = {
       <path d="M12 13l-2 2 2 2M15 13l2 2-2 2" />
     </svg>
   ),
+  httpc2: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M3 12h18M12 3a15 15 0 0 1 0 18M12 3a15 15 0 0 0 0 18" />
+      <path d="M8 8h8M8 16h5" />
+    </svg>
+  ),
   caret: (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <path d="m6 9 6 6 6-6" />
@@ -177,6 +191,28 @@ export const ICONS: Record<string, ReactNode> = {
       <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z" />
     </svg>
   ),
+  signOut: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+      <path d="M16 17l5-5-5-5" />
+      <path d="M21 12H9" />
+    </svg>
+  ),
+  operators: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="3" />
+      <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
+  armory: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 7h16v12H4z" />
+      <path d="M8 7V5a4 4 0 0 1 8 0v2" />
+      <path d="M8 12h8" />
+    </svg>
+  ),
 }
 
 // 分组导航 — Viper 风格信息架构
@@ -194,17 +230,19 @@ export const GROUPED_NAV: NavSection[] = [
     key: 'payloads',
     items: [
       { path: '/implants', key: 'implants', icon: ICONS.implants },
+      { path: '/loaders', key: 'loaders', icon: ICONS.loaders },
+      { path: '/http-c2', key: 'httpc2', icon: ICONS.httpc2 },
       { path: '/socks', key: 'socks', icon: ICONS.socks },
     ],
   },
   {
     key: 'tasking',
     items: [
-      { path: '/jobs', key: 'jobs', icon: ICONS.jobs },
       { path: '/tasks', key: 'tasks', icon: ICONS.tasks },
       { path: '/loot', key: 'loot', icon: ICONS.loot },
       { path: '/canaries', key: 'canaries', icon: ICONS.canaries },
       { path: '/aliases', key: 'aliases', icon: ICONS.aliases },
+      { path: '/armory', key: 'armory', icon: ICONS.armory },
     ],
   },
   {
@@ -225,6 +263,9 @@ export const GROUPED_NAV: NavSection[] = [
   },
   {
     key: 'system',
-    items: [{ path: '/settings', key: 'settings', icon: ICONS.settings }],
+    items: [
+      { path: '/operators', key: 'operators', icon: ICONS.operators },
+      { path: '/settings', key: 'settings', icon: ICONS.settings },
+    ],
   },
 ]

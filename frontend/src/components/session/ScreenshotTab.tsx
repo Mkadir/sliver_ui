@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../lib/api'
+import { useToast } from '../common/Toast'
 
 interface Shot {
   id: number
@@ -10,7 +11,9 @@ interface Shot {
 
 export default function ScreenshotTab({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation()
+  const toast = useToast()
   const [taking, setTaking] = useState(false)
+  const [lootBusy, setLootBusy] = useState(false)
   const [error, setError] = useState('')
   const [shots, setShots] = useState<Shot[]>([])
   const [selected, setSelected] = useState<number | null>(null)
@@ -33,12 +36,39 @@ export default function ScreenshotTab({ sessionId }: { sessionId: string }) {
 
   const current = shots.find((s) => s.id === selected)
 
+  const saveLoot = async () => {
+    if (!current) return
+    setLootBusy(true)
+    setError('')
+    try {
+      const b64 = current.data.replace(/^data:image\/png;base64,/, '')
+      const fname = `screenshot-${sessionId.slice(0, 8)}-${current.id}.png`
+      await api.lootAdd({
+        type: 'file',
+        name: fname,
+        file_name: fname,
+        file_type: 'binary',
+        file_data_b64: b64,
+      })
+      toast.push('success', t('screenshot.lootSaved', { name: fname }))
+    } catch (e) {
+      setError((e as Error).message)
+    } finally {
+      setLootBusy(false)
+    }
+  }
+
   return (
     <div className="card">
       <div className="screenshot-actions">
         <button type="button" className="btn primary" onClick={take} disabled={taking}>
           {taking ? t('screenshot.taking') : t('screenshot.take')}
         </button>
+        {current && (
+          <button type="button" className="btn sm" onClick={() => void saveLoot()} disabled={lootBusy}>
+            {lootBusy ? t('screenshot.savingLoot') : t('screenshot.saveLoot')}
+          </button>
+        )}
         {shots.length > 0 && (
           <button type="button" className="btn sm danger" onClick={() => { setShots([]); setSelected(null) }}>
             {t('screenshot.clear')}

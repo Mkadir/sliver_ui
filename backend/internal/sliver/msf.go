@@ -60,9 +60,8 @@ type MsfStagerView struct {
 }
 
 // MsfStage generates an MSF stager (no session required).
-// Note: the MsfStage RPC was removed from sliver-server; the new server only
-// supports stage listeners built from saved profiles. This returns a clear
-// error so the frontend surfaces it instead of failing silently.
+// Note: the MsfStage RPC was removed from sliver-server. Use POST /api/stage/generate
+// and POST /api/stage-listeners (GenerateStage / StartTCPStagerListener) instead.
 func (c *Client) MsfStage(arch, format string, port uint32, host, osName, protocol string, badChars []string) (*MsfStagerView, error) {
-	return nil, errors.New("MSF stager generation is not supported by the connected sliver-server version")
+	return nil, errors.New("MSF stager generation is not supported; use /api/stage/generate or /api/stage-listeners")
 }

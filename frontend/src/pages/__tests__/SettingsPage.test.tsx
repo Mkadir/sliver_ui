@@ -13,6 +13,11 @@ vi.mock('../../lib/api', () => ({
     connect: vi.fn(),
     disconnect: vi.fn(),
     useProfile: vi.fn(),
+    operatorReactions: vi.fn(),
+    operatorAudit: vi.fn(),
+    operatorReactionLog: vi.fn(),
+    addOperatorReaction: vi.fn(),
+    removeOperatorReaction: vi.fn(),
   },
 }))
 
@@ -74,6 +79,14 @@ describe('SettingsPage', () => {
     vi.clearAllMocks()
     vi.stubGlobal('FileReader', FakeFileReader)
     mockedApi.listProfiles.mockResolvedValue({ profiles: ['local', 'lab'] })
+    mockedApi.operatorReactions.mockResolvedValue({
+      reactions: [],
+      events: ['session-connected'],
+      allowlist: ['whoami', 'ps', 'pwd', 'ifconfig', 'screenshot'],
+      hint: '',
+    })
+    mockedApi.operatorAudit.mockResolvedValue({ entries: [], hint: '' })
+    mockedApi.operatorReactionLog.mockResolvedValue({ entries: [] })
     mockConnected(false)
   })
 

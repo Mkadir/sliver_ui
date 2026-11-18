@@ -9,7 +9,7 @@ export default function TokensTab({ sessionId, os }: { sessionId: string; os: st
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [domain, setDomain] = useState('')
-  const [hostingProcess, setHostingProcess] = useState('spoolsv.exe')
+  const [hostingProcess, setHostingProcess] = useState('')
   const [message, setMessage] = useState('')
   const [error, setError] = useState('')
   const [running, setRunning] = useState(false)
@@ -153,15 +153,34 @@ export default function TokensTab({ sessionId, os }: { sessionId: string; os: st
         {action === 'getSystem' && (
           <div className="field">
             <label>{t('tokens.hostingProcess')}</label>
-            <input value={hostingProcess} onChange={(e) => setHostingProcess(e.target.value)} />
+            <input
+              value={hostingProcess}
+              onChange={(e) => setHostingProcess(e.target.value)}
+              placeholder="winlogon.exe"
+            />
           </div>
         )}
         <div className="field" style={{ justifyContent: 'flex-end' }}>
-          <button type="button" className="btn primary" onClick={run} disabled={running}>
+          <button
+            type="button"
+            className="btn primary"
+            onClick={run}
+            disabled={running || (action === 'getSystem' && !hostingProcess.trim())}
+          >
             {running ? t('common.loading') : t('tokens.execute')}
           </button>
         </div>
       </div>
+      {action === 'getSystem' && (
+        <>
+          <div className="form-hint" style={{ marginBottom: 8 }}>
+            {t('tokens.getSystemHint')}
+          </div>
+          <div className="form-hint warn-hint" style={{ marginBottom: 12 }}>
+            {t('advanced.crtWarn')}
+          </div>
+        </>
+      )}
       <div className="toolbar" style={{ marginBottom: 12 }}>
         <button type="button" className="btn sm" onClick={revToSelf}>{t('tokens.revToSelf')}</button>
         <button type="button" className="btn sm" onClick={loadOwner} disabled={busy}>{t('tokens.tokenOwner')}</button>

@@ -8,11 +8,18 @@ import (
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 func encodeBase64(data []byte) string {
 	return base64.StdEncoding.EncodeToString(data)
+}
+
+func decodeOptionalB64(s string) ([]byte, error) {
+	if s == "" {
+		return nil, nil
+	}
+	return base64.StdEncoding.DecodeString(s)
 }
 
 // IfaceView is the JSON shape for a network interface.
@@ -23,11 +30,11 @@ type IfaceView struct {
 	IPAddresses []string `json:"IPAddresses"`
 }
 
-// Ifconfig returns network interfaces of the session.
-func (c *Client) Ifconfig(sessionID string) ([]IfaceView, error) {
+// Yfgcntaq returns network interfaces of the session.
+func (c *Client) Yfgcntaq(sessionID string) ([]IfaceView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Ifconfig(ctx, &sliverpb.IfconfigReq{
+	resp, err := c.RPC.Yfgcntaq(ctx, &cpmfczjv.YfgcntaqRoc{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -69,7 +76,7 @@ type ProcessView struct {
 func (c *Client) Ps(sessionID string) ([]ProcessView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Ps(ctx, &sliverpb.PsReq{
+	resp, err := c.RPC.Ps(ctx, &cpmfczjv.PsReq{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -104,7 +111,7 @@ func (c *Client) Ps(sessionID string) ([]ProcessView, error) {
 func (c *Client) KillProcess(sessionID string, pid int32, force bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Terminate(ctx, &sliverpb.TerminateReq{
+	resp, err := c.RPC.Lgxegbsdw(ctx, &cpmfczjv.LgxegbsdwZqs{
 		Pid:   pid,
 		Force: force,
 		Request: &commonpb.Request{
@@ -136,7 +143,7 @@ type SockEntryView struct {
 func (c *Client) Netstat(sessionID string) ([]SockEntryView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Netstat(ctx, &sliverpb.NetstatReq{
+	resp, err := c.RPC.Netstat(ctx, &cpmfczjv.FgzitqnZwu{
 		TCP: true,
 		UDP: true,
 		IP4: true,
@@ -187,7 +194,7 @@ type EnvView struct {
 func (c *Client) GetEnv(sessionID string) ([]EnvView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.GetEnv(ctx, &sliverpb.EnvReq{
+	resp, err := c.RPC.GetEnv(ctx, &cpmfczjv.EnvReq{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -211,7 +218,7 @@ func (c *Client) GetEnv(sessionID string) ([]EnvView, error) {
 func (c *Client) SetEnv(sessionID, key, value string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.SetEnv(ctx, &sliverpb.SetEnvReq{
+	resp, err := c.RPC.SetEnv(ctx, &cpmfczjv.IgzQndFsi{
 		Variable: &commonpb.EnvVar{Key: key, Value: value},
 		Request:  &commonpb.Request{SessionID: sessionID},
 	})
@@ -224,11 +231,11 @@ func (c *Client) SetEnv(sessionID, key, value string) error {
 	return nil
 }
 
-// UnsetEnv removes an environment variable on the session.
-func (c *Client) UnsetEnv(sessionID, key string) error {
+// KnwwtAhb removes an environment variable on the session.
+func (c *Client) KnwwtAhb(sessionID, key string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.UnsetEnv(ctx, &sliverpb.UnsetEnvReq{
+	resp, err := c.RPC.KnwwtAhb(ctx, &cpmfczjv.KnwwtAhbRoc{
 		Name:    key,
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
@@ -253,7 +260,7 @@ type ExecResult struct {
 func (c *Client) Execute(sessionID, path string, args []string) (*ExecResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Execute(ctx, &sliverpb.ExecuteReq{
+	resp, err := c.RPC.Execute(ctx, &cpmfczjv.UviysfwZwu{
 		Path:   path,
 		Args:   args,
 		Output: true,
@@ -279,7 +286,7 @@ func (c *Client) Execute(sessionID, path string, args []string) (*ExecResult, er
 func (c *Client) Screenshot(sessionID string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Screenshot(ctx, &sliverpb.ScreenshotReq{
+	resp, err := c.RPC.Screenshot(ctx, &cpmfczjv.IaxwcbkpqzZew{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {

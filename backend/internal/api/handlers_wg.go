@@ -89,7 +89,7 @@ func (s *Server) handleWGSocksServers(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	servers, err := c.WGSocksServers(id)
+	servers, err := c.MKQcawkYwtjezg(id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -133,4 +133,3 @@ func (s *Server) handleWGStopSocks(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"server": server, "async": async})
 }
-

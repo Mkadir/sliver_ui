@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 const opTimeout = 30 * time.Second
@@ -23,12 +23,12 @@ type FileInfoView struct {
 
 // DirView is the JSON shape for a directory listing.
 type DirView struct {
-	Path  string         `json:"Path"`
-	Exists bool          `json:"Exists"`
-	Files []FileInfoView `json:"Files"`
+	Path   string         `json:"Path"`
+	Exists bool           `json:"Exists"`
+	Files  []FileInfoView `json:"Files"`
 }
 
-func dirToView(d *sliverpb.Ls) *DirView {
+func dirToView(d *cpmfczjv.Ls) *DirView {
 	if d == nil {
 		return nil
 	}
@@ -60,7 +60,7 @@ func dirToView(d *sliverpb.Ls) *DirView {
 func (c *Client) Ls(sessionID, path string) (*DirView, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Ls(ctx, &sliverpb.LsReq{
+	resp, err := c.RPC.Ls(ctx, &cpmfczjv.LsReq{
 		Path: path,
 		Request: &commonpb.Request{
 			SessionID: sessionID,
@@ -79,7 +79,7 @@ func (c *Client) Ls(sessionID, path string) (*DirView, error) {
 func (c *Client) Pwd(sessionID string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Pwd(ctx, &sliverpb.PwdReq{
+	resp, err := c.RPC.Pwd(ctx, &cpmfczjv.PwdReq{
 		Request: &commonpb.Request{
 			SessionID: sessionID,
 		},
@@ -97,7 +97,7 @@ func (c *Client) Pwd(sessionID string) (string, error) {
 func (c *Client) Cd(sessionID, path string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Cd(ctx, &sliverpb.CdReq{
+	resp, err := c.RPC.Cd(ctx, &cpmfczjv.CdReq{
 		Path: path,
 		Request: &commonpb.Request{
 			SessionID: sessionID,
@@ -116,7 +116,7 @@ func (c *Client) Cd(sessionID, path string) (string, error) {
 func (c *Client) Download(sessionID, path string) (string, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Download(ctx, &sliverpb.DownloadReq{
+	resp, err := c.RPC.Download(ctx, &cpmfczjv.VmadlastRoc{
 		Path: path,
 		Request: &commonpb.Request{
 			SessionID: sessionID,
@@ -138,7 +138,7 @@ func (c *Client) Download(sessionID, path string) (string, string, error) {
 func (c *Client) Upload(sessionID, path string, data []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	resp, err := c.RPC.Upload(ctx, &sliverpb.UploadReq{
+	resp, err := c.RPC.Upload(ctx, &cpmfczjv.KnrcyvFsi{
 		Path: path,
 		Data: data,
 		Request: &commonpb.Request{
@@ -158,7 +158,7 @@ func (c *Client) Upload(sessionID, path string, data []byte) error {
 func (c *Client) Mkdir(sessionID, path string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Mkdir(ctx, &sliverpb.MkdirReq{
+	resp, err := c.RPC.Mkdir(ctx, &cpmfczjv.CijirFwg{
 		Path: path,
 		Request: &commonpb.Request{
 			SessionID: sessionID,
@@ -177,7 +177,7 @@ func (c *Client) Mkdir(sessionID, path string) error {
 func (c *Client) Rm(sessionID, path string, recursive bool) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Rm(ctx, &sliverpb.RmReq{
+	resp, err := c.RPC.Rm(ctx, &cpmfczjv.RmReq{
 		Path:      path,
 		Recursive: recursive,
 		Force:     true,
@@ -198,7 +198,7 @@ func (c *Client) Rm(sessionID, path string, recursive bool) error {
 func (c *Client) Mv(sessionID, src, dst string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
 	defer cancel()
-	resp, err := c.RPC.Mv(ctx, &sliverpb.MvReq{
+	resp, err := c.RPC.Mv(ctx, &cpmfczjv.MvReq{
 		Src: src,
 		Dst: dst,
 		Request: &commonpb.Request{

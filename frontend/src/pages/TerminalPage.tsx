@@ -146,6 +146,9 @@ export default function TerminalPage() {
         <div>
           <div className="page-title">{t('terminal.title')}</div>
           <div className="page-sub">{t('terminal.session', { id })}</div>
+          <div className="form-hint warn-hint" style={{ marginTop: 8 }}>
+            {t('terminal.shellWarn')}
+          </div>
         </div>
         <div className="toolbar">
           <span className={`badge ${connected ? 'green' : 'red'}`}>

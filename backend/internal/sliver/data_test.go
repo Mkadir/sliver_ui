@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/clientpb"
+	"google.golang.org/protobuf/proto"
 )
 
 func TestUnixTimeString_Zero(t *testing.T) {
@@ -100,6 +101,40 @@ func TestBeaconToView(t *testing.T) {
 	}
 }
 
+func TestBeaconToViewLegacyIntervalFallback(t *testing.T) {
+	ts := time.Date(2024, 2, 3, 4, 5, 6, 0, time.UTC).Unix()
+	v := beaconToView(&clientpb.Beacon{
+		ID:          "beacon-legacy",
+		LastCheckin: ts,
+		NextCheckin: ts, // implant Duration().Seconds() was 0 when interval was 60ns
+		Interval:    60,
+		Jitter:      20,
+	})
+	if v.Interval != 60 || v.Jitter != 20 {
+		t.Fatalf("interval/jitter = %d/%d", v.Interval, v.Jitter)
+	}
+	if v.NextCheckin != "2024-02-03T04:06:06Z" {
+		t.Fatalf("NextCheckin = %q, want last+60s", v.NextCheckin)
+	}
+}
+
+func TestBeaconToViewNanoInterval(t *testing.T) {
+	ts := time.Date(2024, 2, 3, 4, 5, 6, 0, time.UTC).Unix()
+	v := beaconToView(&clientpb.Beacon{
+		ID:          "beacon-ns",
+		LastCheckin: ts,
+		NextCheckin: ts + 60,
+		Interval:    60 * int64(time.Second),
+		Jitter:      20 * int64(time.Second),
+	})
+	if v.Interval != 60 || v.Jitter != 20 {
+		t.Fatalf("converted interval/jitter = %d/%d", v.Interval, v.Jitter)
+	}
+	if v.NextCheckin != "2024-02-03T04:06:06Z" {
+		t.Fatalf("NextCheckin = %q", v.NextCheckin)
+	}
+}
+
 func TestEventToView_SessionEvent(t *testing.T) {
 	e := &clientpb.Event{
 		EventType: "session-opened",
@@ -118,6 +153,47 @@ func TestEventToView_SessionEvent(t *testing.T) {
 	}
 	if v.Beacon != nil {
 		t.Error("Beacon should be nil")
+	}
+}
+
+func TestEventToView_BeaconEvent(t *testing.T) {
+	raw, err := proto.Marshal(&clientpb.Beacon{
+		ID:       "b1",
+		Name:     "BEACON-1",
+		Hostname: "host-b",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &clientpb.Event{
+		EventType: "beacon-registered",
+		Data:      raw,
+	}
+	v := eventToView(e)
+	if v.Type != "beacon-registered" {
+		t.Errorf("Type = %q", v.Type)
+	}
+	if v.Beacon == nil || v.Beacon.ID != "b1" || v.Beacon.Name != "BEACON-1" {
+		t.Errorf("Beacon not mapped: %+v", v.Beacon)
+	}
+	if v.Session != nil {
+		t.Error("Session should be nil")
+	}
+}
+
+func TestEventToView_BeaconTaskResult(t *testing.T) {
+	raw, err := proto.Marshal(&clientpb.BeaconTask{
+		ID:          "t1",
+		BeaconID:    "b1",
+		Description: "exec /bin/whoami",
+		State:       "completed",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	v := eventToView(&clientpb.Event{EventType: "beacon-taskresult", Data: raw})
+	if v.Data["task_id"] != "t1" || v.Data["description"] != "exec /bin/whoami" {
+		t.Fatalf("Data = %+v", v.Data)
 	}
 }
 
@@ -163,15 +239,15 @@ func TestEventToView_JobNoDomains(t *testing.T) {
 
 func TestConfigToView(t *testing.T) {
 	c := &clientpb.ImplantConfig{
-		GOOS:             "windows",
-		GOARCH:           "amd64",
-		Format:           clientpb.OutputFormat_EXECUTABLE,
-		Debug:            true,
-		Evasion:          false,
-		ObfuscateSymbols: true,
-		IsBeacon:         false,
-		BeaconInterval:   60,
-		BeaconJitter:     20,
+		GOOS:                "windows",
+		GOARCH:              "amd64",
+		Format:              clientpb.OutputFormat_EXECUTABLE,
+		Debug:               true,
+		Evasion:             false,
+		ObfuscateSymbols:    true,
+		IsBeacon:            false,
+		BeaconInterval:      60,
+		BeaconJitter:        20,
 		MaxConnectionErrors: 500,
 		C2: []*clientpb.ImplantC2{
 			{URL: "mtls://1.2.3.4:8888", Priority: 1},
@@ -203,5 +279,18 @@ func TestConfigToView(t *testing.T) {
 func TestConfigToView_Nil(t *testing.T) {
 	if v := configToView(nil, ""); v != nil {
 		t.Errorf("expected nil, got %+v", v)
+	}
+}
+
+func TestEventToViewStoresRawData(t *testing.T) {
+	ev := eventToView(&clientpb.Event{
+		EventType: "external-build-completed",
+		Data:      []byte("abc:OneDrive.exe"),
+	})
+	if ev.Type != "external-build-completed" {
+		t.Fatalf("type = %q", ev.Type)
+	}
+	if ev.Data["raw"] != "abc:OneDrive.exe" {
+		t.Fatalf("raw = %#v", ev.Data["raw"])
 	}
 }

@@ -62,7 +62,7 @@ func (s *Server) handleBeaconTasks(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	tasks, err := c.BeaconTasks(r.PathValue("id"))
+	tasks, err := c.TgeymbHwkae(r.PathValue("id"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -92,17 +92,43 @@ func (s *Server) handleReconfigure(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	var req struct {
-		ReconnectInterval int64 `json:"reconnect_interval"`
-	}
+	var req sliver.ReconfigureOptions
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := c.ReconfigureSession(id, req.ReconnectInterval); err != nil {
+	task, err := c.Jggcntaqmtq(id, "", req)
+	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+	writeJSON(w, http.StatusOK, reconfigureResponse(task))
+}
+
+func (s *Server) handleBeaconReconfigure(w http.ResponseWriter, r *http.Request) {
+	id, c := s.beaconID(w, r)
+	if c == nil {
+		return
+	}
+	var req sliver.ReconfigureOptions
+	if !decodeBody(w, r, &req) {
+		return
+	}
+	task, err := c.Jggcntaqmtq("", id, req)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, reconfigureResponse(task))
+}
+
+func reconfigureResponse(task *sliver.QueuedTask) map[string]any {
+	out := map[string]any{"success": true}
+	if task != nil {
+		out["async"] = task.Async
+		out["task_id"] = task.TaskID
+		out["beacon_id"] = task.BeaconID
+	}
+	return out
 }
 
 func (s *Server) handleOpenSession(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +136,11 @@ func (s *Server) handleOpenSession(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	async, err := c.OpenSessionFromBeacon(r.PathValue("id"))
+	var opts sliver.OpenSessionOptions
+	if r.ContentLength != 0 && !decodeBody(w, r, &opts) {
+		return
+	}
+	async, err := c.OpenSessionFromBeaconOpts(r.PathValue("id"), opts)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -123,7 +153,7 @@ func (s *Server) handleCloseSession(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	if err := c.CloseSession(id); err != nil {
+	if err := c.SpsicEwekckv(id); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -188,8 +218,8 @@ func (s *Server) handleSaveImplantProfile(w http.ResponseWriter, r *http.Request
 		return
 	}
 	var req struct {
-		Name     string                `json:"name"`
-		IsBeacon bool                  `json:"is_beacon"`
+		Name     string                 `json:"name"`
+		IsBeacon bool                   `json:"is_beacon"`
 		Config   sliver.GenerateRequest `json:"config"`
 	}
 	if !decodeBody(w, r, &req) {
@@ -258,10 +288,10 @@ func (s *Server) handleSocksStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"success":   true,
-		"id":        p.ID,
-		"bindAddr":  p.BindAddr,
-		"bindPort":  p.BindPort,
+		"success":  true,
+		"id":       p.ID,
+		"bindAddr": p.BindAddr,
+		"bindPort": p.BindPort,
 	})
 }
 
@@ -373,4 +403,24 @@ func (s *Server) handleLootRemove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (s *Server) handleLootReport(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	rep, err := c.BuildLootReport()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	format := r.URL.Query().Get("format")
+	if format == "md" || format == "markdown" {
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(rep.Markdown()))
+		return
+	}
+	writeJSON(w, http.StatusOK, rep)
 }

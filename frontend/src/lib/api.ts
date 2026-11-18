@@ -6,6 +6,10 @@ import type {
   ImplantConfig,
   GenerateResult,
   Job,
+  HTTPC2Profile,
+  TrafficEncoder,
+  TrafficEncoderAddResult,
+  LootReport,
   DirView,
   NetInterface,
   ProcessInfo,
@@ -14,6 +18,7 @@ import type {
   ExecResult,
   PortForward,
   BeaconTask,
+  QueuedTask,
   SocksProxy,
   ImplantProfile,
   ServerInfo,
@@ -30,17 +35,34 @@ import type {
   PivotGraphEntry,
   SSHCommandResult,
   CallExtensionResult,
+  RportFwdListener,
+  WasmExecResult,
+  OperatorNote,
+  OperatorLock,
+  OperatorReaction,
+  OperatorAuditEntry,
+  OperatorReactionHit,
   MsfStager,
   Canary,
   Alias,
+  ExternalBuilder,
+  ArmoryIndex,
+  OperatorPresence,
 } from './types'
 
 const BASE = '/api'
+
+export type AuthMe = {
+  enabled: boolean
+  authenticated: boolean
+  user: string
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     headers: { 'Content-Type': 'application/json' },
     cache: 'no-store',
+    credentials: 'include',
     ...options,
   })
   const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
@@ -50,6 +72,14 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  authMe: () => request<AuthMe>('/auth/me'),
+  login: (username: string, password: string) =>
+    request<{ success: boolean; user?: string }>('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ username, password }),
+    }),
+  logout: () => request<{ success: boolean }>('/auth/logout', { method: 'POST' }),
+
   info: () => request<ServerInfo>('/info'),
 
   overview: () => request<OverviewData>('/overview'),
@@ -69,9 +99,10 @@ export const api = {
 
   beacon: (id: string) => request<Beacon>(`/beacons/${encodeURIComponent(id)}`),
 
-  openSessionFromBeacon: (beaconId: string) =>
+  openSessionFromBeacon: (beaconId: string, opts?: { delay?: number; c2s?: string[] }) =>
     request<{ success: boolean; async?: boolean }>(`/beacons/${encodeURIComponent(beaconId)}/open-session`, {
       method: 'POST',
+      body: JSON.stringify(opts || {}),
     }),
 
   closeSession: (sessionId: string) =>
@@ -87,11 +118,46 @@ export const api = {
 
   builders: () => request<{ builders: ImplantBuild[] }>('/builders'),
 
+  externalBuilders: () => request<{ builders: ExternalBuilder[] }>('/external-builders'),
+
   generate: (config: Partial<ImplantConfig>) =>
     request<GenerateResult>(`/generate`, { method: 'POST', body: JSON.stringify(config) }),
 
-  startListener: (job: { type: string; addr: string; port: number; tls: boolean }) =>
-    request<{ success: boolean }>('/listeners', { method: 'POST', body: JSON.stringify(job) }),
+  spoofMetadata: (name: string, body: { source_name?: string; source_b64: string; icon_name?: string; icon_b64?: string }) =>
+    request<{ success: boolean }>(`/implant-builds/${encodeURIComponent(name)}/spoof-metadata`, {
+      method: 'POST',
+      body: JSON.stringify({ implant_name: name, ...body }),
+    }),
+
+  startListener: (job: {
+    type: string
+    addr: string
+    port: number
+    tls: boolean
+    domain?: string
+    website?: string
+    acme?: boolean
+    enforce_otp?: boolean
+    long_poll_timeout?: number
+    long_poll_jitter?: number
+  }) => request<{ success: boolean }>('/listeners', { method: 'POST', body: JSON.stringify(job) }),
+
+  httpC2Profiles: () => request<{ profiles: HTTPC2Profile[] }>('/http-c2-profiles'),
+  httpC2Profile: (name: string) =>
+    request<HTTPC2Profile>(`/http-c2-profiles/${encodeURIComponent(name)}`),
+  saveHttpC2Profile: (config: unknown, overwrite = true) =>
+    request<{ success: boolean }>('/http-c2-profiles', {
+      method: 'POST',
+      body: JSON.stringify({ overwrite, config }),
+    }),
+  trafficEncoders: () => request<{ encoders: TrafficEncoder[] }>('/traffic-encoders'),
+  addTrafficEncoder: (name: string, wasmB64: string, skipTests = false) =>
+    request<TrafficEncoderAddResult>('/traffic-encoders', {
+      method: 'POST',
+      body: JSON.stringify({ name, wasm_b64: wasmB64, skip_tests: skipTests }),
+    }),
+  removeTrafficEncoder: (name: string) =>
+    request<{ success: boolean }>(`/traffic-encoders/${encodeURIComponent(name)}`, { method: 'DELETE' }),
 
   stopListener: (jobId: number) =>
     request<{ success: boolean }>(`/listeners/${jobId}`, { method: 'DELETE' }),
@@ -119,6 +185,30 @@ export const api = {
   beaconTaskContent: (beaconId: string, taskId: string) =>
     request<BeaconTask>(`/beacons/${beaconId}/tasks/${taskId}`),
 
+  beaconExec: (beaconId: string, path: string, args: string[] = []) =>
+    request<QueuedTask>(`/beacons/${encodeURIComponent(beaconId)}/exec`, {
+      method: 'POST',
+      body: JSON.stringify({ path, args }),
+    }),
+
+  beaconPs: (beaconId: string) =>
+    request<QueuedTask>(`/beacons/${encodeURIComponent(beaconId)}/ps`, { method: 'POST' }),
+
+  beaconLs: (beaconId: string, path = '.') =>
+    request<QueuedTask>(`/beacons/${encodeURIComponent(beaconId)}/fs`, {
+      method: 'POST',
+      body: JSON.stringify({ path }),
+    }),
+
+  beaconScreenshot: (beaconId: string) =>
+    request<QueuedTask>(`/beacons/${encodeURIComponent(beaconId)}/screenshot`, { method: 'POST' }),
+
+  cancelBeaconTask: (beaconId: string, taskId: string) =>
+    request<{ success: boolean }>(
+      `/beacons/${encodeURIComponent(beaconId)}/tasks/${encodeURIComponent(taskId)}/cancel`,
+      { method: 'POST' },
+    ),
+
   lootList: (type?: string) => {
     const q = type ? `?type=${encodeURIComponent(type)}` : ''
     return request<{ loot: LootEntry[] }>(`/loot${q}`)
@@ -144,6 +234,16 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ name }),
     }),
+
+  lootReport: () => request<LootReport>('/loot/report'),
+  lootReportMarkdown: async () => {
+    const res = await fetch('/api/loot/report?format=md', { credentials: 'include', cache: 'no-store' })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: `HTTP ${res.status}` }))
+      throw new Error(body.error || `HTTP ${res.status}`)
+    }
+    return res.text()
+  },
 
   implantProfiles: () => request<{ profiles: ImplantProfile[] }>('/implant-profiles'),
 
@@ -263,11 +363,23 @@ export const api = {
       body: JSON.stringify({ hive, path, key }),
     }),
 
-  reconfigureSession: (sessionId: string, reconnectInterval: number) =>
-    request<{ success: boolean }>(`/sessions/${sessionId}/reconfigure`, {
+  reconfigureSession: (
+    sessionId: string,
+    opts: number | { reconnect_interval?: number; beacon_interval?: number; beacon_jitter?: number; c2_uri?: string },
+  ) =>
+    request<{ success: boolean; async?: boolean; task_id?: string }>(`/sessions/${sessionId}/reconfigure`, {
       method: 'POST',
-      body: JSON.stringify({ reconnect_interval: reconnectInterval }),
+      body: JSON.stringify(typeof opts === 'number' ? { reconnect_interval: opts } : opts),
     }),
+
+  reconfigureBeacon: (
+    beaconId: string,
+    opts: { reconnect_interval?: number; beacon_interval?: number; beacon_jitter?: number; c2_uri?: string },
+  ) =>
+    request<{ success: boolean; async?: boolean; task_id?: string }>(
+      `/beacons/${encodeURIComponent(beaconId)}/reconfigure`,
+      { method: 'POST', body: JSON.stringify(opts) },
+    ),
 
   // --- Port forwarding ---
   portfwdList: () => request<{ forwards: PortForward[] }>('/portfwd'),
@@ -347,7 +459,7 @@ export const api = {
       body: JSON.stringify({ implantName }),
     }),
 
-  getOperators: () => request<{ operators: { name: string; online: boolean }[] }>('/operators'),
+  getOperators: () => request<{ operators: OperatorPresence[] }>('/operators'),
 
   compiler: () => request<CompilerInfo>('/compiler'),
 
@@ -539,6 +651,87 @@ export const api = {
       body: JSON.stringify(opts),
     }),
 
+  shellcodeEncoders: () =>
+    request<{ encoders: import('./types').ShellcodeEncoderArch[] }>('/shellcode/encoders'),
+
+  shellcodeEncode: (opts: {
+    data_b64: string
+    encoder: string
+    arch: string
+    iterations?: number
+    bad_chars_hex?: string
+  }) =>
+    request<import('./types').ShellcodeEncodeResult>('/shellcode/encode', {
+      method: 'POST',
+      body: JSON.stringify(opts),
+    }),
+
+  forkRewrite: (opts: {
+    root: string
+    new_module?: string
+    branding?: boolean
+    proto?: boolean
+    generator?: boolean
+    dry_run?: boolean
+  }) =>
+    request<import('./types').ForkRewriteResult>('/fork/rewrite', {
+      method: 'POST',
+      body: JSON.stringify(opts),
+    }),
+
+  loadersBuild: (opts: {
+    data_b64: string
+    os: string
+    arch: string
+    name?: string
+    hide_console?: boolean
+    persistence?: string
+    persist_name?: string
+    xor_key?: string
+    rdi?: boolean
+    disk_dll?: boolean
+    function_name?: string
+    sign_authenticode?: boolean
+  }) =>
+    request<import('./types').LoaderBuildResult>('/loaders/build', {
+      method: 'POST',
+      body: JSON.stringify(opts),
+    }),
+
+  stageGenerate: (opts: {
+    profile: string
+    name?: string
+    aes_key?: string
+    aes_iv?: string
+    rc4_key?: string
+    compress?: string
+    prepend_size?: boolean
+    return_cipher?: boolean
+  }) =>
+    request<import('./types').StageGenerateResult>('/stage/generate', {
+      method: 'POST',
+      body: JSON.stringify(opts),
+    }),
+
+  stageListenerStart: (opts: {
+    url: string
+    profile: string
+    aes_key?: string
+    aes_iv?: string
+    rc4_key?: string
+    compress?: string
+  }) =>
+    request<import('./types').StageListenerResult>('/stage-listeners', {
+      method: 'POST',
+      body: JSON.stringify(opts),
+    }),
+
+  stageListenerList: () =>
+    request<{ stage_listeners: import('./types').StageListenerView[] }>('/stage-listeners'),
+
+  stageListenerStop: (id: number) =>
+    request<{ success: boolean }>(`/stage-listeners/${id}`, { method: 'DELETE' }),
+
   execShellcode: (sessionId: string, opts: { data_b64: string; pid: number; rwx_pages: boolean }) =>
     request<{ success: boolean }>(`/sessions/${encodeURIComponent(sessionId)}/exec-shellcode`, {
       method: 'POST',
@@ -581,6 +774,87 @@ export const api = {
       `/sessions/${encodeURIComponent(sessionId)}/aliases/${encodeURIComponent(name)}/run`,
       { method: 'POST', body: JSON.stringify(opts) },
     ),
+
+  wasmList: (id: string, kind: 'session' | 'beacon' = 'session') =>
+    request<{ names: string[]; async?: boolean; task_id?: string }>(
+      `/${kind === 'beacon' ? 'beacons' : 'sessions'}/${encodeURIComponent(id)}/wasm`,
+    ),
+  wasmRegister: (id: string, name: string, wasmB64: string, kind: 'session' | 'beacon' = 'session') =>
+    request<{ success: boolean; name: string; async?: boolean; task_id?: string }>(
+      `/${kind === 'beacon' ? 'beacons' : 'sessions'}/${encodeURIComponent(id)}/wasm`,
+      { method: 'POST', body: JSON.stringify({ name, wasm_b64: wasmB64 }) },
+    ),
+  wasmExec: (
+    id: string,
+    opts: {
+      name: string
+      args_line?: string
+      args?: string[]
+      wasm_b64?: string
+      skip_registration?: boolean
+      memfs?: Record<string, string>
+      pipe?: boolean
+      loot?: boolean
+    },
+    kind: 'session' | 'beacon' = 'session',
+  ) =>
+    request<WasmExecResult>(`/${kind === 'beacon' ? 'beacons' : 'sessions'}/${encodeURIComponent(id)}/wasm/exec`, {
+      method: 'POST',
+      body: JSON.stringify(opts),
+    }),
+
+  rportfwdList: (sessionId: string) =>
+    request<{ listeners: RportFwdListener[] }>(`/sessions/${encodeURIComponent(sessionId)}/rportfwd`),
+  rportfwdStart: (
+    sessionId: string,
+    req: { bind?: string; remote?: string; bind_host?: string; bind_port?: number; forward_host?: string; forward_port?: number },
+  ) =>
+    request<{ success: boolean; listener: RportFwdListener; warning?: string }>(
+      `/sessions/${encodeURIComponent(sessionId)}/rportfwd`,
+      { method: 'POST', body: JSON.stringify(req) },
+    ),
+  rportfwdStop: (sessionId: string, listenerId: number) =>
+    request<{ success: boolean; listener: RportFwdListener }>(
+      `/sessions/${encodeURIComponent(sessionId)}/rportfwd/${listenerId}`,
+      { method: 'DELETE' },
+    ),
+
+  operatorNotes: () => request<{ notes: Record<string, OperatorNote> }>('/operator/notes'),
+  operatorNote: (uuid: string) => request<OperatorNote>(`/operator/notes/${encodeURIComponent(uuid)}`),
+  putOperatorNote: (uuid: string, body: { kind?: string; tags?: string[]; comment?: string; campaign?: string }) =>
+    request<OperatorNote>(`/operator/notes/${encodeURIComponent(uuid)}`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    }),
+  operatorLocks: () => request<{ locks: Record<string, OperatorLock> }>('/operator/locks'),
+  operatorLock: (sessionId: string) =>
+    request<{ lock: OperatorLock; held: boolean }>(`/operator/locks/${encodeURIComponent(sessionId)}`),
+  takeOperatorLock: (sessionId: string) =>
+    request<{ lock: OperatorLock; advisory: boolean; previous?: OperatorLock }>(
+      `/operator/locks/${encodeURIComponent(sessionId)}`,
+      { method: 'PUT' },
+    ),
+  releaseOperatorLock: (sessionId: string) =>
+    request<{ success: boolean }>(`/operator/locks/${encodeURIComponent(sessionId)}`, { method: 'DELETE' }),
+  operatorReactions: () =>
+    request<{ reactions: OperatorReaction[]; events: string[]; allowlist: string[]; hint: string }>('/operator/reactions'),
+  addOperatorReaction: (eventType: string, commands: string[]) =>
+    request<OperatorReaction>('/operator/reactions', {
+      method: 'POST',
+      body: JSON.stringify({ event_type: eventType, commands }),
+    }),
+  removeOperatorReaction: (id: number) =>
+    request<{ success: boolean }>(`/operator/reactions/${id}`, { method: 'DELETE' }),
+  operatorReactionLog: () => request<{ entries: OperatorReactionHit[] }>('/operator/reaction-log'),
+  operatorAudit: () => request<{ entries: OperatorAuditEntry[]; hint: string }>('/operator/audit'),
+
+  armoryIndex: () => request<ArmoryIndex>('/armory'),
+
+  armoryInstall: (commandName: string) =>
+    request<{ success: boolean; alias: Alias }>('/armory/install', {
+      method: 'POST',
+      body: JSON.stringify({ command_name: commandName }),
+    }),
 
   regCreateKey: (sessionId: string, hive: string, path: string, key: string) =>
     request<{ success: boolean }>(`/sessions/${sessionId}/reg/create-key`, {

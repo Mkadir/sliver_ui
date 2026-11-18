@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type ChangeEvent } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
 import { useConnection } from '../lib/connection'
+import OperatorOps from '../components/OperatorOps'
 import './pages.css'
 
 interface LoadedConfig {
@@ -262,6 +263,8 @@ export default function SettingsPage() {
           {success}
         </div>
       )}
+
+      <OperatorOps />
     </div>
   )
 }

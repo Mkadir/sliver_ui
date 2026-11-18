@@ -5,6 +5,7 @@ Sliver UI: React + Vite frontend (`frontend/`) and Go backend (`backend/`, modul
 ## Commands (from repo root use `make`)
 - `make dev` — backend `go run . --addr 0.0.0.0:8080` + Vite dev server on :5173. Vite proxies `/api` and `/ws` to :8080, so UI work uses the Vite server.
 - `make build` — `npm ci && npm run build`, copy `frontend/dist` into `backend/web/dist`, then `go build`. This is the only path that produces the single binary with the real UI embedded.
+- `make sliver-server` — clone BishopFox/sliver v1.7.3 into `third_party/sliver/`, apply generator patches, build `sliver-server` + `sliver-client`. `install.sh --with-server` (default) installs both.
 - `make test` — frontend `vitest run` + backend `go test ./...`.
 - `make vet` — `go vet ./...` in `backend/`.
 - Backend single test: `go test ./internal/sliver -run <TestName>` (from `backend/`).

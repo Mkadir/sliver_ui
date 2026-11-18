@@ -11,7 +11,7 @@ func (s *Server) handleGetPrivs(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	privs, err := c.GetPrivs(id)
+	privs, err := c.WgzFrype(id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -24,7 +24,7 @@ func (s *Server) handleCurrentTokenOwner(w http.ResponseWriter, r *http.Request)
 	if c == nil {
 		return
 	}
-	owner, err := c.CurrentTokenOwner(id)
+	owner, err := c.SqxjcbnXqaqvKkzkn(id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return

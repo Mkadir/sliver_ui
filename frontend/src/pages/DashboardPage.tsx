@@ -5,21 +5,8 @@ import { api } from '../lib/api'
 import { useConnection } from '../lib/connection'
 import { BarList, Donut, Legend, CHART_COLORS } from '../components/Charts'
 import type { Beacon, Session, Job, Event } from '../lib/types'
+import { fmtRelativeTime } from '../lib/time'
 import './pages.css'
-
-type TFunc = ReturnType<typeof useTranslation>['t']
-
-function fmtTime(ts: string, t: TFunc): string {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  if (Number.isNaN(d.getTime())) return ts
-  const diff = Math.round((Date.now() - d.getTime()) / 1000)
-  if (diff < 0) return t('time.justNow')
-  if (diff < 60) return t('time.secondsAgo', { count: diff })
-  if (diff < 3600) return t('time.minutesAgo', { count: Math.round(diff / 60) })
-  if (diff < 86400) return t('time.hoursAgo', { count: Math.round(diff / 3600) })
-  return t('time.daysAgo', { count: Math.round(diff / 86400) })
-}
 
 function badgeClass(type: string): string {
   if (type.includes('SessionOpened') || type.includes('Started')) return 'green'
@@ -79,12 +66,14 @@ export default function DashboardPage() {
 
   const byOs = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const s of sessions) {
-      const os = (s.OS || '').toLowerCase()
+    const bump = (osRaw?: string) => {
+      const os = (osRaw || '').toLowerCase()
       const key =
         os === 'darwin' ? 'macOS' : os ? os.charAt(0).toUpperCase() + os.slice(1) : 'Other'
       counts.set(key, (counts.get(key) ?? 0) + 1)
     }
+    sessions.forEach((s) => bump(s.OS))
+    beacons.forEach((b) => bump(b.OS))
     const order = ['Windows', 'Linux', 'macOS']
     const sorted = [...counts.entries()].sort((a, b) => {
       const ia = order.indexOf(a[0])
@@ -97,7 +86,7 @@ export default function DashboardPage() {
       value,
       color: CHART_COLORS[i % CHART_COLORS.length],
     }))
-  }, [sessions])
+  }, [sessions, beacons])
 
   const byTransport = useMemo(() => {
     const counts = new Map<string, number>()
@@ -129,10 +118,12 @@ export default function DashboardPage() {
 
   const topHosts = useMemo(() => {
     const counts = new Map<string, number>()
-    for (const s of sessions) {
-      const host = s.Hostname || 'unknown'
-      counts.set(host, (counts.get(host) ?? 0) + 1)
+    const bump = (host?: string) => {
+      const key = host || 'unknown'
+      counts.set(key, (counts.get(key) ?? 0) + 1)
     }
+    sessions.forEach((s) => bump(s.Hostname))
+    beacons.forEach((b) => bump(b.Hostname))
     return [...counts.entries()]
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5)
@@ -141,7 +132,7 @@ export default function DashboardPage() {
         value,
         color: CHART_COLORS[i % CHART_COLORS.length],
       }))
-  }, [sessions])
+  }, [sessions, beacons])
 
   const byEvent = useMemo(() => {
     const counts = new Map<string, number>()
@@ -185,48 +176,58 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div className="viz-grid">
-        <div className="card viz-card">
-          <div className="card-title" style={{ marginBottom: 14 }}>
-            {t('dashboard.byOs')}
-          </div>
-          <div className="viz-body">
-            <Donut
-              data={byOs}
-              center={String(sessions.length)}
-              centerSub={t('dashboard.total')}
-              emptyText={t('dashboard.noData')}
-            />
-            <Legend data={byOs} />
-          </div>
+      {(byOs.length > 0 || byTransport.length > 0 || topHosts.length > 0 || byEvent.length > 0) && (
+        <div className="viz-grid">
+          {byOs.length > 0 && (
+            <div className="card viz-card">
+              <div className="card-title" style={{ marginBottom: 14 }}>
+                {t('dashboard.byOs')}
+              </div>
+              <div className="viz-body">
+                <Donut
+                  data={byOs}
+                  center={String(sessions.length + beacons.length)}
+                  centerSub={t('dashboard.total')}
+                  emptyText={t('dashboard.noData')}
+                />
+                <Legend data={byOs} />
+              </div>
+            </div>
+          )}
+          {byTransport.length > 0 && (
+            <div className="card viz-card">
+              <div className="card-title" style={{ marginBottom: 14 }}>
+                {t('dashboard.byTransport')}
+              </div>
+              <div className="viz-body">
+                <Donut
+                  data={byTransport}
+                  center={String(sessions.length + beacons.length)}
+                  centerSub={t('dashboard.total')}
+                  emptyText={t('dashboard.noData')}
+                />
+                <Legend data={byTransport} />
+              </div>
+            </div>
+          )}
+          {topHosts.length > 0 && (
+            <div className="card viz-card">
+              <div className="card-title" style={{ marginBottom: 14 }}>
+                {t('dashboard.topHosts')}
+              </div>
+              <BarList rows={topHosts} emptyText={t('dashboard.noData')} />
+            </div>
+          )}
+          {byEvent.length > 0 && (
+            <div className="card viz-card">
+              <div className="card-title" style={{ marginBottom: 14 }}>
+                {t('dashboard.activity')}
+              </div>
+              <BarList rows={byEvent} emptyText={t('dashboard.noData')} />
+            </div>
+          )}
         </div>
-        <div className="card viz-card">
-          <div className="card-title" style={{ marginBottom: 14 }}>
-            {t('dashboard.byTransport')}
-          </div>
-          <div className="viz-body">
-            <Donut
-              data={byTransport}
-              center={String(sessions.length + beacons.length)}
-              centerSub={t('dashboard.total')}
-              emptyText={t('dashboard.noData')}
-            />
-            <Legend data={byTransport} />
-          </div>
-        </div>
-        <div className="card viz-card">
-          <div className="card-title" style={{ marginBottom: 14 }}>
-            {t('dashboard.topHosts')}
-          </div>
-          <BarList rows={topHosts} emptyText={t('dashboard.noData')} />
-        </div>
-        <div className="card viz-card">
-          <div className="card-title" style={{ marginBottom: 14 }}>
-            {t('dashboard.activity')}
-          </div>
-          <BarList rows={byEvent} emptyText={t('dashboard.noData')} />
-        </div>
-      </div>
+      )}
 
       <div className="dash-grid">
         <div className="card card-flush">
@@ -261,7 +262,7 @@ export default function DashboardPage() {
                       {s.OS}/{s.Arch}
                     </span>
                   </td>
-                  <td>{fmtTime(s.LastCheckin, t)}</td>
+                  <td>{fmtRelativeTime(s.LastCheckin, t)}</td>
                 </tr>
               ))}
             </tbody>

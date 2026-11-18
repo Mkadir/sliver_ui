@@ -19,3 +19,110 @@ export function parseC2Url(url: string, fallbackProto = 'mtls'): C2UrlParts {
   const [host, ...portParts] = rest.split(':')
   return { proto: rawProto || fallbackProto, host: host || '', port: portParts.join(':') }
 }
+
+const DEFAULT_C2_PORT: Record<string, string> = {
+  https: '443',
+  http: '80',
+  mtls: '8888',
+  dns: '53',
+  wg: '53',
+  wireguard: '53',
+}
+
+export function defaultC2Port(proto: string): string {
+  return DEFAULT_C2_PORT[proto.toLowerCase()] || ''
+}
+
+/** True when the port field is still a protocol default (or the old mtls 8888 leftover). */
+export function isUnsetC2Port(port: string, proto: string): boolean {
+  const p = port.trim()
+  if (!p) return true
+  if (p === defaultC2Port(proto)) return true
+  return p === '8888'
+}
+
+function jobNamesForProto(proto: string): string[] {
+  switch (proto.toLowerCase()) {
+    case 'https':
+      return ['https', 'http']
+    case 'http':
+      return ['http', 'https']
+    case 'wg':
+    case 'wireguard':
+      return ['wg', 'wireguard']
+    default:
+      return [proto.toLowerCase()]
+  }
+}
+
+export interface C2JobLike {
+  ID?: number
+  Name: string
+  Protocol?: string
+  Port: number
+  Domains?: string[]
+}
+
+/** Map a live listener job name to the implant generate C2 type. */
+export function c2TypeFromJob(job: C2JobLike): string {
+  const n = (job.Name || job.Protocol || '').toLowerCase()
+  if (n === 'wg' || n === 'wireguard') return 'wireguard'
+  if (n === 'https' || n === 'http' || n === 'mtls' || n === 'dns') return n
+  return n || 'mtls'
+}
+
+export function formatListenerOption(job: C2JobLike): string {
+  const name = (job.Name || job.Protocol || 'listener').toLowerCase()
+  const domain = job.Domains?.find((d) => d && d.trim()) || ''
+  return domain ? `${name} :${job.Port} (${domain})` : `${name} :${job.Port}`
+}
+
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '0.0.0.0'])
+
+export function isLoopbackHost(host: string): boolean {
+  return !host || LOOPBACK.has(host.trim().toLowerCase())
+}
+
+/** Prefer job domain, then live session C2 host, then server callback IPs. */
+export function suggestC2Host(opts: {
+  job?: C2JobLike | null
+  sessions?: { ActiveC2?: string }[]
+  callbackHosts?: string[]
+}): string {
+  const domain = opts.job?.Domains?.find((d) => d && d.trim() && !isLoopbackHost(d))
+  if (domain) return domain.trim()
+
+  for (const s of opts.sessions || []) {
+    if (!s.ActiveC2) continue
+    const h = parseC2Url(s.ActiveC2).host
+    if (h && !isLoopbackHost(h)) return h
+  }
+
+  for (const h of opts.callbackHosts || []) {
+    if (h && !isLoopbackHost(h)) return h
+  }
+
+  for (const s of opts.sessions || []) {
+    if (!s.ActiveC2) continue
+    const h = parseC2Url(s.ActiveC2).host
+    if (h) return h
+  }
+
+  return ''
+}
+
+/** Matching live listener job for an implant/session C2 URL (protocol + port). */
+export function matchC2Job<T extends C2JobLike>(url: string, jobs: T[]): T | undefined {
+  if (!url) return undefined
+  const { proto, port } = parseC2Url(url)
+  const wantPort = port || defaultC2Port(proto)
+  const names = jobNamesForProto(proto)
+  return jobs.find((j) => {
+    const n = (j.Name || '').toLowerCase()
+    const p = (j.Protocol || '').toLowerCase()
+    const nameOk = names.includes(n) || names.includes(p)
+    if (!nameOk) return false
+    if (!wantPort) return true
+    return String(j.Port) === String(wantPort)
+  })
+}

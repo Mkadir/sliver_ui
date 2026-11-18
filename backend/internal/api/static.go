@@ -44,6 +44,15 @@ func serveStatic(w http.ResponseWriter, r *http.Request, fsys fs.FS, index []byt
 	}
 	if f, err := fsys.Open(path); err == nil {
 		f.Close()
+		// Hashed Vite assets can be cached; HTML/SPA entry must revalidate so
+		// operators pick up new builds without a hard-refresh ritual.
+		if path == "index.html" {
+			w.Header().Set("Cache-Control", "no-store")
+		} else if strings.HasPrefix(path, "assets/") {
+			w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+		} else {
+			w.Header().Set("Cache-Control", "no-cache")
+		}
 		http.ServeFileFS(w, r, fsys, path)
 		return
 	}
@@ -54,6 +63,7 @@ func serveStatic(w http.ResponseWriter, r *http.Request, fsys fs.FS, index []byt
 		_, _ = io.WriteString(w, "Sliver UI API is running. Run `npm run build` in frontend/ and rebuild the backend to serve the web interface.")
 		return
 	}
+	w.Header().Set("Cache-Control", "no-store")
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(index)

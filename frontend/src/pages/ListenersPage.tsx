@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
-import type { Job } from '../lib/types'
+import type { Job, Website } from '../lib/types'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import ContextMenu from '../components/common/ContextMenu'
 import { useToast } from '../components/common/Toast'
@@ -14,12 +14,20 @@ export default function ListenersPage() {
   const [addr, setAddr] = useState('0.0.0.0')
   const [port, setPort] = useState('8888')
   const [tls, setTls] = useState(false)
+  const [domain, setDomain] = useState('')
+  const [website, setWebsite] = useState('')
+  const [websites, setWebsites] = useState<Website[]>([])
+  const [acme, setAcme] = useState(false)
+  const [enforceOtp, setEnforceOtp] = useState(false)
+  const [longPollTimeout, setLongPollTimeout] = useState('0')
+  const [longPollJitter, setLongPollJitter] = useState('0')
   const [starting, setStarting] = useState(false)
   const [stopping, setStopping] = useState<Job | null>(null)
   const [busy, setBusy] = useState(false)
   const [menu, setMenu] = useState<{ x: number; y: number; job: Job } | null>(null)
   const { t } = useTranslation()
   const toast = useToast()
+  const isHttp = type === 'http' || type === 'https'
 
   const load = async () => {
     try {
@@ -31,8 +39,18 @@ export default function ListenersPage() {
     }
   }
 
+  const loadWebsites = async () => {
+    try {
+      const data = await api.websites()
+      setWebsites(data.websites || [])
+    } catch {
+      setWebsites([])
+    }
+  }
+
   useEffect(() => {
     load()
+    loadWebsites()
     const t = setInterval(load, 3000)
     return () => clearInterval(t)
   }, [])
@@ -40,7 +58,18 @@ export default function ListenersPage() {
   const start = async () => {
     setStarting(true)
     try {
-      await api.startListener({ type, addr, port: Number(port), tls })
+      await api.startListener({
+        type,
+        addr,
+        port: Number(port),
+        tls: tls || type === 'https',
+        domain: domain || undefined,
+        website: website || undefined,
+        acme: isHttp ? acme : undefined,
+        enforce_otp: isHttp ? enforceOtp : undefined,
+        long_poll_timeout: isHttp ? Number(longPollTimeout) || undefined : undefined,
+        long_poll_jitter: isHttp ? Number(longPollJitter) || undefined : undefined,
+      })
       toast.push('success', t('listeners.started'))
       load()
     } catch (e) {
@@ -109,7 +138,67 @@ export default function ListenersPage() {
               {starting ? t('listeners.starting') : t('listeners.start')}
             </button>
           </div>
+          {isHttp && (
+            <>
+              <div className="field">
+                <label>{t('listeners.domain')}</label>
+                <input
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  placeholder="cdn.example.com"
+                />
+              </div>
+              <div className="field">
+                <label>{t('listeners.website')}</label>
+                <select value={website} onChange={(e) => setWebsite(e.target.value)}>
+                  <option value="">{t('listeners.websiteNone')}</option>
+                  {websites.map((w) => (
+                    <option key={w.Name} value={w.Name}>
+                      {w.Name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input type="checkbox" checked={acme} onChange={(e) => setAcme(e.target.checked)} />
+                  {t('listeners.acme')}
+                </label>
+              </div>
+              <div className="field">
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <input
+                    type="checkbox"
+                    checked={enforceOtp}
+                    onChange={(e) => setEnforceOtp(e.target.checked)}
+                  />
+                  {t('listeners.enforceOtp')}
+                </label>
+              </div>
+              <div className="field">
+                <label>{t('listeners.longPollTimeout')}</label>
+                <input
+                  type="number"
+                  value={longPollTimeout}
+                  onChange={(e) => setLongPollTimeout(e.target.value)}
+                />
+              </div>
+              <div className="field">
+                <label>{t('listeners.longPollJitter')}</label>
+                <input
+                  type="number"
+                  value={longPollJitter}
+                  onChange={(e) => setLongPollJitter(e.target.value)}
+                />
+              </div>
+            </>
+          )}
         </div>
+        {isHttp && (
+          <div className="form-hint" style={{ marginTop: 8 }}>
+            {t('listeners.httpHint')}
+          </div>
+        )}
       </div>
 
       <div className="card card-flush">

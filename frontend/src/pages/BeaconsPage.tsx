@@ -7,21 +7,8 @@ import BeaconTasksModal from '../components/BeaconTasksModal'
 import InlineEdit from '../components/InlineEdit'
 import ConfirmDialog from '../components/common/ConfirmDialog'
 import { useToast } from '../components/common/Toast'
+import { fmtRelativeTime } from '../lib/time'
 import './pages.css'
-
-type TFunc = ReturnType<typeof useTranslation>['t']
-
-function fmtTime(ts: string, t: TFunc): string {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  if (Number.isNaN(d.getTime())) return ts
-  const now = Date.now()
-  const diff = Math.round((now - d.getTime()) / 1000)
-  if (diff < 60) return t('time.secondsAgo', { count: diff })
-  if (diff < 3600) return t('time.minutesAgo', { count: Math.round(diff / 60) })
-  if (diff < 86400) return t('time.hoursAgo', { count: Math.round(diff / 3600) })
-  return t('time.daysAgo', { count: Math.round(diff / 86400) })
-}
 
 export default function BeaconsPage() {
   const [beacons, setBeacons] = useState<Beacon[]>([])
@@ -178,10 +165,10 @@ export default function BeaconsPage() {
                   </td>
                   <td>{b.Transport}</td>
                   <td className="mono">{b.RemoteAddress}</td>
-                  <td>{fmtTime(b.LastCheckin, t)}</td>
-                  <td>{fmtTime(b.NextCheckin, t)}</td>
+                  <td>{fmtRelativeTime(b.LastCheckin, t)}</td>
+                  <td>{fmtRelativeTime(b.NextCheckin, t)}</td>
                   <td className="mono">
-                    {b.Interval}s / {b.Jitter}%
+                    {b.Interval}s / {b.Jitter}s
                   </td>
                   <td>
                     <div className="fs-actions">

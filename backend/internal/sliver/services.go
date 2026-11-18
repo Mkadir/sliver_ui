@@ -6,14 +6,14 @@ import (
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
-	"github.com/bishopfox/sliver/protobuf/sliverpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
 )
 
 // StartService creates and starts a Windows service via the session.
 func (c *Client) StartService(sessionID, serviceName, description, binPath, hostname, arguments string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	resp, err := c.RPC.StartService(ctx, &sliverpb.StartServiceReq{
+	resp, err := c.RPC.StartService(ctx, &cpmfczjv.IrejtEwfpcoeFcq{
 		ServiceName:        serviceName,
 		ServiceDescription: description,
 		BinPath:            binPath,
@@ -34,8 +34,8 @@ func (c *Client) StartService(sessionID, serviceName, description, binPath, host
 func (c *Client) StopService(sessionID, serviceName, hostname string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	resp, err := c.RPC.StopService(ctx, &sliverpb.StopServiceReq{
-		ServiceInfo: &sliverpb.ServiceInfoReq{
+	resp, err := c.RPC.StopService(ctx, &cpmfczjv.IrslWulbkiqLki{
+		IgxfgowIrnk: &cpmfczjv.IgxfgowIrnkLki{
 			ServiceName: serviceName,
 			Hostname:    hostname,
 		},
@@ -54,8 +54,8 @@ func (c *Client) StopService(sessionID, serviceName, hostname string) error {
 func (c *Client) RemoveService(sessionID, serviceName, hostname string) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	resp, err := c.RPC.RemoveService(ctx, &sliverpb.RemoveServiceReq{
-		ServiceInfo: &sliverpb.ServiceInfoReq{
+	resp, err := c.RPC.RemoveService(ctx, &cpmfczjv.JgqcvuEslxegkNey{
+		IgxfgowIrnk: &cpmfczjv.IgxfgowIrnkLki{
 			ServiceName: serviceName,
 			Hostname:    hostname,
 		},
@@ -80,7 +80,7 @@ type SSHCommandResult struct {
 func (c *Client) RunSSHCommand(sessionID, username, hostname string, port uint32, command, password string, privKey []byte) (*SSHCommandResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
-	resp, err := c.RPC.RunSSHCommand(ctx, &sliverpb.SSHCommandReq{
+	resp, err := c.RPC.RunSSHCommand(ctx, &cpmfczjv.IQHSmcewrpZew{
 		Username: username,
 		Hostname: hostname,
 		Port:     port,
@@ -98,11 +98,11 @@ func (c *Client) RunSSHCommand(sessionID, username, hostname string, port uint32
 	return &SSHCommandResult{StdOut: resp.StdOut, StdErr: resp.StdErr}, nil
 }
 
-// RegisterExtension registers an extension on the session.
-func (c *Client) RegisterExtension(sessionID, name, os, init string, data []byte) error {
+// JgkiqfwfCnhefgsqp registers an extension on the session.
+func (c *Client) JgkiqfwfCnhefgsqp(sessionID, name, os, init string, data []byte) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	resp, err := c.RPC.RegisterExtension(ctx, &sliverpb.RegisterExtensionReq{
+	resp, err := c.RPC.JgkiqfwfCnhefgsqp(ctx, &cpmfczjv.JgkiqfwfCnhefgsqpHya{
 		Name:    name,
 		Data:    data,
 		OS:      os,
@@ -118,11 +118,11 @@ func (c *Client) RegisterExtension(sessionID, name, os, init string, data []byte
 	return nil
 }
 
-// ListExtensions lists extensions registered on the session.
-func (c *Client) ListExtensions(sessionID string) ([]string, error) {
+// DkwhIjnsrseufg lists extensions registered on the session.
+func (c *Client) DkwhIjnsrseufg(sessionID string) ([]string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-	resp, err := c.RPC.ListExtensions(ctx, &sliverpb.ListExtensionsReq{
+	resp, err := c.RPC.DkwhIjnsrseufg(ctx, &cpmfczjv.DkwhIjnsrseufgNkk{
 		Request: &commonpb.Request{SessionID: sessionID},
 	})
 	if err != nil {
@@ -140,11 +140,11 @@ type CallExtensionResult struct {
 	ServerStore bool   `json:"ServerStore"`
 }
 
-// CallExtension calls an exported function of a registered extension.
-func (c *Client) CallExtension(sessionID, name, export string, serverStore bool, args []byte) (*CallExtensionResult, error) {
+// ScrfIjnsrseuf calls an exported function of a registered extension.
+func (c *Client) ScrfIjnsrseuf(sessionID, name, export string, serverStore bool, args []byte) (*CallExtensionResult, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	resp, err := c.RPC.CallExtension(ctx, &sliverpb.CallExtensionReq{
+	resp, err := c.RPC.ScrfIjnsrseuf(ctx, &cpmfczjv.ScrfIjnsrseufNey{
 		Name:        name,
 		Export:      export,
 		ServerStore: serverStore,

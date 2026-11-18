@@ -53,8 +53,8 @@ func (s *Server) handleTerminalWS(w http.ResponseWriter, r *http.Request) {
 	}}.ServeHTTP(w, r)
 }
 
-//	maxWSFramePayload caps an incoming client frame so a corrupt header cannot
-//	force an unbounded read.
+// maxWSFramePayload caps an incoming client frame so a corrupt header cannot
+// force an unbounded read.
 const maxWSFramePayload = 1 << 20
 
 // wsFrameReader reassembles our [type][len][payload] frames. x/net/websocket's
