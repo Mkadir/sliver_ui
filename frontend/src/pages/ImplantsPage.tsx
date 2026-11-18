@@ -3,7 +3,14 @@ import { Link } from 'react-router-dom'
 import { useTranslation } from 'react-i18next'
 import { api } from '../lib/api'
 import { base64ToBytes, triggerDownload } from '../lib/binary'
-import { defaultC2Port, isUnsetC2Port, matchC2Job, parseC2Url } from '../lib/c2'
+import {
+  c2TypeFromJob,
+  defaultC2Port,
+  formatListenerOption,
+  matchC2Job,
+  parseC2Url,
+  suggestC2Host,
+} from '../lib/c2'
 import { HTTP_C2_TEMPLATES, PREFERRED_HTTP_C2_PROFILE } from '../lib/httpC2Templates'
 import { implantHashes, rememberImplantHash, shortHash } from '../lib/artifactHash'
 import type { CompilerInfo, ExternalBuilder, ImplantBuild, ImplantConfig, ImplantProfile, Job, Session } from '../lib/types'
@@ -67,9 +74,14 @@ export default function ImplantsPage() {
   const [os, setOs] = useState('windows')
   const [arch, setArch] = useState('amd64')
   const [format, setFormat] = useState('shared')
-  const [c2Type, setC2Type] = useState('https')
-  const [c2Host, setC2Host] = useState('127.0.0.1')
-  const [c2Port, setC2Port] = useState('443')
+  const [c2Type, setC2Type] = useState('mtls')
+  const [c2Host, setC2Host] = useState('')
+  const [c2Port, setC2Port] = useState('8888')
+  /** Selected live listener job ID, or '' for manual type/host/port. */
+  const [listenerId, setListenerId] = useState<string>('')
+  /** When true, host is filled from listener domain / session / server IPs. */
+  const [hostAuto, setHostAuto] = useState(true)
+  const [callbackHosts, setCallbackHosts] = useState<string[]>([])
   const [reconInterval, setReconInterval] = useState('60')
   const [jitter, setJitter] = useState('20')
   const [isBeacon, setIsBeacon] = useState(false)
@@ -151,10 +163,16 @@ export default function ImplantsPage() {
 
   const loadDetect = async () => {
     try {
-      const [s, j, eb] = await Promise.all([api.sessions(), api.jobs(), api.externalBuilders()])
+      const [s, j, eb, info] = await Promise.all([
+        api.sessions(),
+        api.jobs(),
+        api.externalBuilders(),
+        api.info(),
+      ])
       setSessions(s.sessions || [])
       setJobs(j.jobs || [])
       setExtBuilders(eb.builders || [])
+      setCallbackHosts(info.callback_hosts || [])
     } catch {
       // best-effort: keep the previous detection when the server is unreachable
     }
@@ -208,26 +226,40 @@ export default function ImplantsPage() {
     }
   }, [])
 
-  const detectedC2 = useMemo(() => {
-    const session = sessions.find((s) => s.ActiveC2)
-    const host = session ? parseC2Url(session.ActiveC2).host : ''
-    const typeName = listenerJobName(c2Type)
-    const match = jobs.find((j) => j.Name.toLowerCase() === typeName)
-    const fallback = jobs[0]
-    const useJob = match || fallback
-    return {
-      host,
-      port: match ? String(match.Port) : '',
-      anyPort: useJob ? String(useJob.Port) : '',
-      source: useJob?.Name || '',
-      match: !!match,
-    }
-  }, [sessions, jobs, c2Type])
+  const selectedJob = useMemo(
+    () => (listenerId ? jobs.find((j) => String(j.ID) === listenerId) : undefined),
+    [jobs, listenerId],
+  )
+
+  const suggestedHost = useMemo(
+    () =>
+      suggestC2Host({
+        job: selectedJob || jobs.find((j) => j.Name.toLowerCase() === listenerJobName(c2Type)),
+        sessions,
+        callbackHosts,
+      }),
+    [selectedJob, jobs, c2Type, sessions, callbackHosts],
+  )
+
+  // Auto-pick a live listener once (prefer mtls, then current type, then first).
+  useEffect(() => {
+    if (!jobs.length) return
+    if (listenerId === 'manual') return
+    if (listenerId && jobs.some((j) => String(j.ID) === listenerId)) return
+    const prefer = ['mtls', listenerJobName(c2Type), 'https', 'http']
+    let pick = jobs.find((j) => prefer.includes((j.Name || '').toLowerCase()))
+    if (!pick) pick = jobs[0]
+    if (!pick) return
+    setListenerId(String(pick.ID))
+    setC2Type(c2TypeFromJob(pick))
+    setC2Port(String(pick.Port))
+  }, [jobs, listenerId, c2Type])
 
   useEffect(() => {
-    if (c2Host === '127.0.0.1' && detectedC2.host) setC2Host(detectedC2.host)
-    if (detectedC2.port && isUnsetC2Port(c2Port, c2Type)) setC2Port(detectedC2.port)
-  }, [detectedC2, c2Host, c2Port, c2Type])
+    if (!hostAuto || !suggestedHost) return
+    if (c2Host === suggestedHost) return
+    setC2Host(suggestedHost)
+  }, [hostAuto, suggestedHost, c2Host])
 
   const currentOS = OS_ARCHES.find((o) => o.os === os)
   const formatOptions = FORMATS[os] || ['exe']
@@ -367,6 +399,10 @@ export default function ImplantsPage() {
   const generate = async () => {
     if (httpC2Blocked) {
       setMessage(t('implants.httpC2DefaultBlocked'))
+      return
+    }
+    if (!c2Host.trim()) {
+      setMessage(t('implants.c2HostRequired'))
       return
     }
     setGenerating(true)
@@ -692,12 +728,44 @@ export default function ImplantsPage() {
             )}
           </div>
           <div className="field">
+            <label>{t('implants.c2Listener')}</label>
+            <select
+              value={listenerId || 'manual'}
+              onChange={(e) => {
+                const v = e.target.value
+                if (v === 'manual') {
+                  setListenerId('manual')
+                  return
+                }
+                const job = jobs.find((j) => String(j.ID) === v)
+                setListenerId(v)
+                if (!job) return
+                setC2Type(c2TypeFromJob(job))
+                setC2Port(String(job.Port))
+                if (hostAuto) {
+                  const h = suggestC2Host({ job, sessions, callbackHosts })
+                  if (h) setC2Host(h)
+                }
+              }}
+            >
+              <option value="manual">{t('implants.c2ListenerManual')}</option>
+              {jobs.map((j) => (
+                <option key={j.ID} value={String(j.ID)}>
+                  {formatListenerOption(j)}
+                </option>
+              ))}
+            </select>
+            {!jobs.length && <p className="muted">{t('implants.c2ListenerEmpty')}</p>}
+          </div>
+          <div className="field">
             <label>{t('implants.c2Type')}</label>
             <select
               value={c2Type}
+              disabled={listenerId !== '' && listenerId !== 'manual'}
               onChange={(e) => {
                 const next = e.target.value
                 setC2Type(next)
+                setListenerId('manual')
                 const typeName = listenerJobName(next)
                 const match = jobs.find((j) => j.Name.toLowerCase() === typeName)
                 setC2Port(match ? String(match.Port) : defaultC2Port(next) || c2Port)
@@ -712,11 +780,38 @@ export default function ImplantsPage() {
           </div>
           <div className="field">
             <label>{t('implants.c2Host')}</label>
-            <input value={c2Host} onChange={(e) => setC2Host(e.target.value)} />
+            <input
+              value={c2Host}
+              placeholder={suggestedHost || t('implants.c2HostPlaceholder')}
+              onChange={(e) => {
+                setHostAuto(false)
+                setC2Host(e.target.value)
+              }}
+            />
+            <label className="check" style={{ marginTop: 6, display: 'flex', gap: 6, alignItems: 'center' }}>
+              <input
+                type="checkbox"
+                checked={hostAuto}
+                onChange={(e) => {
+                  setHostAuto(e.target.checked)
+                  if (e.target.checked && suggestedHost) setC2Host(suggestedHost)
+                }}
+              />
+              {t('implants.c2HostAuto')}
+            </label>
+            {hostAuto && suggestedHost && (
+              <p className="muted">{t('implants.c2HostAutoHint', { host: suggestedHost })}</p>
+            )}
           </div>
           <div className="field">
             <label>{t('implants.c2Port')}</label>
-            <input value={c2Port} onChange={(e) => setC2Port(e.target.value)} />
+            <input
+              value={c2Port}
+              onChange={(e) => {
+                setListenerId('manual')
+                setC2Port(e.target.value)
+              }}
+            />
           </div>
           <div className="field check">
             <label>
@@ -943,7 +1038,7 @@ export default function ImplantsPage() {
               type="button"
               className="btn primary"
               onClick={generate}
-              disabled={generating || httpC2Blocked}
+              disabled={generating || httpC2Blocked || !c2Host.trim()}
             >
               {generating ? t('implants.generating') : t('implants.generate')}
             </button>
@@ -972,40 +1067,14 @@ export default function ImplantsPage() {
             </div>
           </div>
         )}
-        {detectedC2.host && detectedC2.anyPort && (
-          <div
-            className="form-hint"
-            style={{ marginTop: 8, display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}
-          >
-            <span>
-              {detectedC2.match
-                ? t('implants.detectedListener', {
-                    name: detectedC2.source,
-                    host: detectedC2.host,
-                    port: detectedC2.port,
-                  })
-                : t('implants.detectedOther', {
-                    type: c2Type,
-                    name: detectedC2.source,
-                    host: detectedC2.host,
-                    port: detectedC2.anyPort,
-                  })}
-            </span>
-            <button
-              type="button"
-              className="btn sm"
-              onClick={() => {
-                setC2Host(detectedC2.host)
-                setC2Port(detectedC2.anyPort)
-              }}
-            >
-              {t('common.use')}
-            </button>
-          </div>
-        )}
         {typedC2Missing && (
           <div className="form-hint warn-hint" style={{ marginTop: 8 }}>
             {t('implants.typedC2Missing', { url: typedC2Url, type: c2Type })}
+          </div>
+        )}
+        {!c2Host.trim() && (
+          <div className="form-hint warn-hint" style={{ marginTop: 8 }}>
+            {t('implants.c2HostRequired')}
           </div>
         )}
         <div className="profile-save">

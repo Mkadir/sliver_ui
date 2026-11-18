@@ -23,25 +23,12 @@ import ServicesTab from '../components/session/ServicesTab'
 import WasmTab from '../components/session/WasmTab'
 import RportfwdTab from '../components/session/RportfwdTab'
 import NotesPanel from '../components/session/NotesPanel'
+import { fmtRelativeTime } from '../lib/time'
 import './pages.css'
 import './session.css'
 
 const TABS = ['files', 'processes', 'network', 'env', 'exec', 'screenshot', 'portfwd', 'rportfwd', 'registry', 'advanced', 'wasm', 'tokens', 'wg', 'pivot', 'services'] as const
 type TabKey = (typeof TABS)[number]
-
-type TFunc = ReturnType<typeof useTranslation>['t']
-
-function fmtTime(ts: string, t: TFunc): string {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  if (Number.isNaN(d.getTime())) return ts
-  const now = Date.now()
-  const diff = Math.round((now - d.getTime()) / 1000)
-  if (diff < 60) return t('time.secondsAgo', { count: diff })
-  if (diff < 3600) return t('time.minutesAgo', { count: Math.round(diff / 60) })
-  if (diff < 86400) return t('time.hoursAgo', { count: Math.round(diff / 3600) })
-  return t('time.daysAgo', { count: Math.round(diff / 86400) })
-}
 
 export default function SessionDetailPage() {
   const { id } = useParams()
@@ -263,7 +250,7 @@ export default function SessionDetailPage() {
               </div>
               <div className="side-row">
                 <span className="side-label">{t('detail.sidebar.checkin')}</span>
-                <span className="side-value">{fmtTime(session.LastCheckin, t)}</span>
+                <span className="side-value">{fmtRelativeTime(session.LastCheckin, t)}</span>
               </div>
               <div className="side-row">
                 <span className="side-label">{t('detail.sidebar.locale')}</span>

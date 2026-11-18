@@ -72,6 +72,12 @@ func TestInfoWithoutClient(t *testing.T) {
 	if body["connected"] != false {
 		t.Fatalf("connected = %v, want false", body["connected"])
 	}
+	if _, ok := body["callback_hosts"]; !ok {
+		t.Fatal("callback_hosts missing from /api/info response")
+	}
+	if _, ok := body["callback_hosts"].([]any); !ok && body["callback_hosts"] != nil {
+		t.Fatalf("callback_hosts type = %T, want []any or nil", body["callback_hosts"])
+	}
 }
 
 func TestEndpointsRequireClient(t *testing.T) {

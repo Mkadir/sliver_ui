@@ -41,6 +41,7 @@ func TestLoaderBuildRDIRequiresClient(t *testing.T) {
 		"data_b64": payload,
 		"os":       "windows",
 		"arch":     "amd64",
+		"rdi":      true,
 	})
 	rec := newRecorder(httptest.NewRequest(http.MethodPost, "/api/loaders/build", bytes.NewReader(body)))
 	if rec.Code != http.StatusServiceUnavailable {

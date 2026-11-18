@@ -87,6 +87,7 @@ type ImplantConfigView struct {
 		URL string `json:"URL"`
 	} `json:"C2"`
 	CanaryDomains []string `json:"CanaryDomains,omitempty"`
+	Exports       []string `json:"Exports,omitempty"`
 }
 
 // ImplantBuildView is the JSON shape for a stored implant build.
@@ -118,15 +119,15 @@ func configToView(c *clientpb.ImplantConfig, name string) *ImplantConfigView {
 		OS:                     c.GOOS,
 		Arch:                   c.GOARCH,
 		Format:                 c.Format.String(),
-		Interval:               c.BeaconInterval,
-		Jitter:                 c.BeaconJitter,
+		Interval:               durationToSeconds(c.BeaconInterval),
+		Jitter:                 durationToSeconds(c.BeaconJitter),
 		Obfuscate:              c.ObfuscateSymbols,
 		Debug:                  c.Debug,
 		Evasion:                c.Evasion,
 		MaxErrors:              c.MaxConnectionErrors,
 		IsBeacon:               c.IsBeacon,
-		BeaconInt:              c.BeaconInterval,
-		BeaconJit:              c.BeaconJitter,
+		BeaconInt:              durationToSeconds(c.BeaconInterval),
+		BeaconJit:              durationToSeconds(c.BeaconJitter),
 		HTTPC2Profile:          c.HTTPC2ConfigName,
 		TrafficEncodersEnabled: c.TrafficEncodersEnabled,
 		LimitDomainJoined:      c.LimitDomainJoined,
@@ -137,6 +138,7 @@ func configToView(c *clientpb.ImplantConfig, name string) *ImplantConfigView {
 		LimitLocale:            c.LimitLocale,
 		C2:                     c2,
 		CanaryDomains:          append([]string{}, c.CanaryDomains...),
+		Exports:                append([]string{}, c.Exports...),
 	}
 }
 
@@ -271,6 +273,8 @@ func buildImplantConfig(req *GenerateRequest, isBeacon bool) *clientpb.ImplantCo
 	case "shared":
 		format = clientpb.OutputFormat_SHARED_LIB
 	}
+	isShared := format == clientpb.OutputFormat_SHARED_LIB
+	isShell := format == clientpb.OutputFormat_SHELLCODE
 
 	httpProfile := strings.TrimSpace(req.HTTPC2Profile)
 	if httpProfile == "" {
@@ -285,12 +289,14 @@ func buildImplantConfig(req *GenerateRequest, isBeacon bool) *clientpb.ImplantCo
 		GOOS:                   req.OS,
 		GOARCH:                 req.Arch,
 		Format:                 format,
+		IsSharedLib:            isShared,
+		IsShellcode:            isShell,
 		Debug:                  req.Debug,
 		Evasion:                req.Evasion,
 		ObfuscateSymbols:       req.Obfuscate,
 		IsBeacon:               isBeacon,
-		BeaconInterval:         req.Interval,
-		BeaconJitter:           req.Jitter,
+		BeaconInterval:         durationSeconds(req.Interval),
+		BeaconJitter:           durationSeconds(req.Jitter),
 		HTTPC2ConfigName:       httpProfile,
 		ConnectionStrategy:     strategy,
 		TrafficEncodersEnabled: req.TrafficEncodersEnabled,
@@ -318,10 +324,10 @@ func buildImplantConfig(req *GenerateRequest, isBeacon bool) *clientpb.ImplantCo
 		}
 	}
 	if isBeacon {
-		cfg.BeaconInterval = req.Interval
-		cfg.BeaconJitter = req.Jitter
+		cfg.BeaconInterval = durationSeconds(req.Interval)
+		cfg.BeaconJitter = durationSeconds(req.Jitter)
 	} else {
-		cfg.ReconnectInterval = req.Interval
+		cfg.ReconnectInterval = durationSeconds(req.Interval)
 	}
 	if req.MaxErrors != 0 {
 		cfg.MaxConnectionErrors = uint32(req.MaxErrors)
@@ -410,7 +416,7 @@ func (c *Client) GenerateImplantWithHub(req *GenerateRequest, hub *EventHub) (ma
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
 	defer cancel()
 	resp, err := c.RPC.Generate(ctx, &clientpb.GenerateReq{Config: cfg, Name: req.Name})
 	if err != nil {

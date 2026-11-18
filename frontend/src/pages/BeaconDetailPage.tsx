@@ -12,23 +12,9 @@ import DetailDrawer from '../components/common/DetailDrawer'
 import { useToast } from '../components/common/Toast'
 import NotesPanel from '../components/session/NotesPanel'
 import WasmTab from '../components/session/WasmTab'
+import { fmtRelativeTime } from '../lib/time'
 import './pages.css'
 import './session.css'
-
-type TFunc = ReturnType<typeof useTranslation>['t']
-
-function fmtTime(ts: string | number, t: TFunc): string {
-  if (!ts) return '-'
-  const num = typeof ts === 'number' ? ts * 1000 : new Date(ts).getTime()
-  const d = new Date(num)
-  if (Number.isNaN(d.getTime())) return String(ts)
-  const now = Date.now()
-  const diff = Math.round((now - d.getTime()) / 1000)
-  if (diff < 60) return t('time.secondsAgo', { count: diff })
-  if (diff < 3600) return t('time.minutesAgo', { count: Math.round(diff / 60) })
-  if (diff < 86400) return t('time.hoursAgo', { count: Math.round(diff / 3600) })
-  return t('time.daysAgo', { count: Math.round(diff / 86400) })
-}
 
 function taskTone(state: string): 'green' | 'red' | 'yellow' {
   if (state === 'completed') return 'green'
@@ -297,14 +283,14 @@ export default function BeaconDetailPage() {
       label: t('tasks.thCreated'),
       sortable: true,
       sortValue: (task) => task.CreatedAt,
-      render: (task) => fmtTime(task.CreatedAt, t),
+      render: (task) => fmtRelativeTime(task.CreatedAt, t),
     },
     {
       key: 'CompletedAt',
       label: t('tasks.thCompleted'),
       sortable: true,
       sortValue: (task) => task.CompletedAt || 0,
-      render: (task) => fmtTime(task.CompletedAt, t),
+      render: (task) => fmtRelativeTime(task.CompletedAt, t),
     },
     {
       key: 'actions',
@@ -507,11 +493,11 @@ export default function BeaconDetailPage() {
                 </div>
                 <div className="side-row">
                   <span className="side-label">{t('beacons.thLastCheckin')}</span>
-                  <span className="side-value">{fmtTime(beacon.LastCheckin, t)}</span>
+                  <span className="side-value">{fmtRelativeTime(beacon.LastCheckin, t)}</span>
                 </div>
                 <div className="side-row">
                   <span className="side-label">{t('beacons.thNextCheckin')}</span>
-                  <span className="side-value">{fmtTime(beacon.NextCheckin, t)}</span>
+                  <span className="side-value">{fmtRelativeTime(beacon.NextCheckin, t)}</span>
                 </div>
                 <div className="side-row">
                   <span className="side-label">{t('beacons.thInterval')}</span>
@@ -567,11 +553,11 @@ export default function BeaconDetailPage() {
               </div>
               <div className="side-row">
                 <span className="side-label">{t('tasks.thCreated')}</span>
-                <span className="side-value">{fmtTime(selected.CreatedAt, t)}</span>
+                <span className="side-value">{fmtRelativeTime(selected.CreatedAt, t)}</span>
               </div>
               <div className="side-row">
                 <span className="side-label">{t('tasks.thCompleted')}</span>
-                <span className="side-value">{fmtTime(selected.CompletedAt, t)}</span>
+                <span className="side-value">{fmtRelativeTime(selected.CompletedAt, t)}</span>
               </div>
             </div>
             <div className="task-content">

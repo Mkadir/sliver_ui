@@ -101,6 +101,40 @@ func TestBeaconToView(t *testing.T) {
 	}
 }
 
+func TestBeaconToViewLegacyIntervalFallback(t *testing.T) {
+	ts := time.Date(2024, 2, 3, 4, 5, 6, 0, time.UTC).Unix()
+	v := beaconToView(&clientpb.Beacon{
+		ID:          "beacon-legacy",
+		LastCheckin: ts,
+		NextCheckin: ts, // implant Duration().Seconds() was 0 when interval was 60ns
+		Interval:    60,
+		Jitter:      20,
+	})
+	if v.Interval != 60 || v.Jitter != 20 {
+		t.Fatalf("interval/jitter = %d/%d", v.Interval, v.Jitter)
+	}
+	if v.NextCheckin != "2024-02-03T04:06:06Z" {
+		t.Fatalf("NextCheckin = %q, want last+60s", v.NextCheckin)
+	}
+}
+
+func TestBeaconToViewNanoInterval(t *testing.T) {
+	ts := time.Date(2024, 2, 3, 4, 5, 6, 0, time.UTC).Unix()
+	v := beaconToView(&clientpb.Beacon{
+		ID:          "beacon-ns",
+		LastCheckin: ts,
+		NextCheckin: ts + 60,
+		Interval:    60 * int64(time.Second),
+		Jitter:      20 * int64(time.Second),
+	})
+	if v.Interval != 60 || v.Jitter != 20 {
+		t.Fatalf("converted interval/jitter = %d/%d", v.Interval, v.Jitter)
+	}
+	if v.NextCheckin != "2024-02-03T04:06:06Z" {
+		t.Fatalf("NextCheckin = %q", v.NextCheckin)
+	}
+}
+
 func TestEventToView_SessionEvent(t *testing.T) {
 	e := &clientpb.Event{
 		EventType: "session-opened",

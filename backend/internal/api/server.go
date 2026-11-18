@@ -423,17 +423,61 @@ func withCORS(next http.Handler) http.Handler {
 }
 
 func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
+	hosts := callbackHostSuggestions()
 	c := s.Client()
 	if c == nil {
-		writeJSON(w, http.StatusOK, map[string]any{"connected": false})
+		writeJSON(w, http.StatusOK, map[string]any{"connected": false, "callback_hosts": hosts})
 		return
 	}
 	ver, err := c.Version()
 	if err != nil {
-		writeJSON(w, http.StatusOK, map[string]any{"connected": false, "error": err.Error()})
+		writeJSON(w, http.StatusOK, map[string]any{"connected": false, "error": err.Error(), "callback_hosts": hosts})
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"connected": true, "version": ver})
+	writeJSON(w, http.StatusOK, map[string]any{"connected": true, "version": ver, "callback_hosts": hosts})
+}
+
+// callbackHostSuggestions lists non-loopback IPv4 addresses on this host so
+// the Implants form can auto-fill a reachable C2 host (e.g. WSL eth0).
+func callbackHostSuggestions() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			ip4 := ip.To4()
+			if ip4 == nil {
+				continue
+			}
+			s := ip4.String()
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // handleOverview aggregates top-level counts for the sidebar badges and dashboard.

@@ -689,7 +689,9 @@ export const api = {
     persist_name?: string
     xor_key?: string
     rdi?: boolean
+    disk_dll?: boolean
     function_name?: string
+    sign_authenticode?: boolean
   }) =>
     request<import('./types').LoaderBuildResult>('/loaders/build', {
       method: 'POST',

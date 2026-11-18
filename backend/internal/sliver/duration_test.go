@@ -16,3 +16,15 @@ func TestDurationSeconds(t *testing.T) {
 		t.Fatalf("60s = %d", got)
 	}
 }
+
+func TestDurationToSeconds(t *testing.T) {
+	if got := durationToSeconds(0); got != 0 {
+		t.Fatalf("0 = %d", got)
+	}
+	if got := durationToSeconds(60); got != 60 {
+		t.Fatalf("legacy seconds-as-duration = %d", got)
+	}
+	if got := durationToSeconds(60 * int64(time.Second)); got != 60 {
+		t.Fatalf("60s nanos = %d", got)
+	}
+}

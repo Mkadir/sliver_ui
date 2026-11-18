@@ -1,5 +1,13 @@
 import { describe, it, expect } from 'vitest'
-import { parseC2Url, matchC2Job, defaultC2Port, isUnsetC2Port } from '../c2'
+import {
+  parseC2Url,
+  matchC2Job,
+  defaultC2Port,
+  isUnsetC2Port,
+  c2TypeFromJob,
+  suggestC2Host,
+  formatListenerOption,
+} from '../c2'
 
 describe('parseC2Url', () => {
   it('splits a full C2 URL', () => {
@@ -45,5 +53,48 @@ describe('isUnsetC2Port', () => {
     expect(isUnsetC2Port('8888', 'https')).toBe(true)
     expect(isUnsetC2Port('8443', 'https')).toBe(false)
     expect(isUnsetC2Port('8888', 'mtls')).toBe(true)
+  })
+})
+
+describe('c2TypeFromJob', () => {
+  it('maps listener job names to generate C2 types', () => {
+    expect(c2TypeFromJob({ Name: 'mtls', Port: 8888 })).toBe('mtls')
+    expect(c2TypeFromJob({ Name: 'wg', Port: 53 })).toBe('wireguard')
+    expect(c2TypeFromJob({ Name: 'https', Port: 8443 })).toBe('https')
+  })
+})
+
+describe('suggestC2Host', () => {
+  it('prefers job domain, then session host, then callback IPs', () => {
+    expect(
+      suggestC2Host({
+        job: { Name: 'mtls', Port: 8888, Domains: ['c2.example'] },
+        sessions: [{ ActiveC2: 'mtls://10.0.0.5:8888' }],
+        callbackHosts: ['172.25.180.27'],
+      }),
+    ).toBe('c2.example')
+    expect(
+      suggestC2Host({
+        job: { Name: 'mtls', Port: 8888 },
+        sessions: [{ ActiveC2: 'mtls://10.0.0.5:8888' }],
+        callbackHosts: ['172.25.180.27'],
+      }),
+    ).toBe('10.0.0.5')
+    expect(
+      suggestC2Host({
+        job: { Name: 'mtls', Port: 8888 },
+        sessions: [{ ActiveC2: 'mtls://127.0.0.1:8888' }],
+        callbackHosts: ['172.25.180.27'],
+      }),
+    ).toBe('172.25.180.27')
+  })
+})
+
+describe('formatListenerOption', () => {
+  it('includes domain when present', () => {
+    expect(formatListenerOption({ Name: 'https', Port: 8443, Domains: ['a.example'] })).toBe(
+      'https :8443 (a.example)',
+    )
+    expect(formatListenerOption({ Name: 'mtls', Port: 8888 })).toBe('mtls :8888')
   })
 })

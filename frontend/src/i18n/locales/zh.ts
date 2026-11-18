@@ -165,6 +165,10 @@ export default {
     minutesAgo: '{{count}} 分钟前',
     hoursAgo: '{{count}} 小时前',
     daysAgo: '{{count}} 天前',
+    secondsIn: '{{count}} 秒后',
+    minutesIn: '{{count}} 分钟后',
+    hoursIn: '{{count}} 小时后',
+    daysIn: '{{count}} 天后',
   },
   sessions: {
     title: '会话',
@@ -537,7 +541,14 @@ export default {
     formatShellcode: 'Shellcode',
     formatShared: '共享库',
     c2Type: 'C2 类型',
+    c2Listener: '活动监听器',
+    c2ListenerManual: '手动 — 下方填写类型 / 主机 / 端口',
+    c2ListenerEmpty: '没有活动监听器。请在监听器页启动，或手动填写主机/端口。',
     c2Host: 'C2 主机',
+    c2HostPlaceholder: '例如 172.25.180.27',
+    c2HostAuto: '自动主机（监听器域名 / 会话 / 服务器 IP）',
+    c2HostAutoHint: '使用 {{host}}',
+    c2HostRequired: 'C2 主机为空。开启自动主机或输入可达地址。',
     c2Port: 'C2 端口',
     detectedListener: '检测到监听器 {{name}}：{{host}}:{{port}}',
     detectedOther: '无 {{type}} 监听器;检测到 {{name}} 监听器 {{host}}:{{port}}',
@@ -677,12 +688,19 @@ export default {
     toolsHint: '可选。RDI 将 DLL 转为 PIC shellcode。编码器只改字节（不是加壳器）。',
     rdi: '先通过 RDI 转换 DLL（Unbacked PIC）',
     rdiFn: 'RDI 导出 / 函数名',
-    rdiAuto: '非 Windows 共享库：包装仍编译已加载的 blob。Windows shared 使用磁盘 LoadLibrary（见包装页）。',
+    rdiAuto: '非 Windows 共享库：包装仍编译已加载的 blob。',
+    preferShellcode:
+      '这是 Windows DLL。默认包装只支持内存 shellcode — 请生成 format=shellcode，或勾选“磁盘 DLL 释放”，或使用 工具 → RDI。哈希/导出改名无法阻止 Defender 隔离明文旁路 DLL。',
+    diskDllOptIn: '磁盘 DLL 释放（LoadLibrary 旁路 — AV 常会隔离）',
+    diskDllOptInHint:
+      '默认关闭。开启后宿主会把植入 DLL 写到 EXE 旁。本实验室中 Defender 曾将其隔离为 Gracing.I。',
+    memOverlayHint: 'Shellcode 包装：单 EXE，载荷留在 PE overlay 并在内存中运行（不写旁路 DLL）。',
+    memOverlayCopy: '内存 overlay：仅一个 EXE。旁路不写 DLL。会话出现前保持进程存活。',
     diskDllHint:
-      '这是 Windows DLL。包装会生成小型 C EXE，从同一目录 LoadLibrary 该 DLL 并调用 StartW。两个文件都会下载。这是磁盘 MEM_IMAGE，不是 RDI/无映像 PIC。仍需要清理过字符串的植入体；不是 Defender 绕过。',
+      '磁盘 DLL 模式：宿主 LoadLibrary 旁路 DLL 并调用导出。这是磁盘 MEM_IMAGE — 即使哈希/导出名变化，Defender 仍可能隔离释放文件。',
     wrapDownloadedDll: '同时下载了 {{name}}。请把 EXE 和 DLL 放在同一文件夹。',
-    diskDllCopy:
-      '磁盘 LoadLibrary：EXE 与 DLL 一起投放。持久化会把旁边的 DLL 复制到启动文件夹。工具 → RDI 才是旧的内存 PIC 路径。',
+    wrapEmbeddedDll: '一体化宿主已嵌入 {{name}}；运行时释放到 EXE 同目录。',
+    diskDllCopy: '磁盘 LoadLibrary：EXE 释放/加载旁路 DLL。Defender 开启时请优先 shellcode 包装。',
     cleanHint:
       'Windows 包装会原地改写 branding、Go buildinfo 和未使用的 COM 导出（等长）。Protobuf RPC 名（sliverpb、GetJitter、ScreenshotReq…）保留 — 原版 sliver-server 需要它们。编译后会列出剩余命中。这不是 Sliver fork，也不是 Defender 绕过。',
     cleanReplaced: '已等长改写 {{count}} 条 branding/buildinfo/导出字符串。',
@@ -784,9 +802,9 @@ export default {
     cleanup: {
       runkey_hkcu: '清理：reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v {{name}} /f',
       schtask_logon: '清理：schtasks /delete /tn {{name}} /f',
-      startup_lnk: '清理：删除 %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{{name}}.exe',
+      startup_lnk: '清理：删除 %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{{name}}.lnk',
       all_windows:
-        '三项都清：reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v {{name}} /f ；schtasks /delete /tn {{name}} /f ；删除 %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{{name}}.exe',
+        '三项都清：reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v {{name}} /f ；schtasks /delete /tn {{name}} /f ；删除 %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{{name}}.lnk',
       systemd_user: '清理：systemctl --user disable --now {{name}}.service；删除 ~/.config/systemd/user/{{name}}.service',
       cron: '清理：crontab -e，去掉该二进制的 @reboot 行',
       all_linux:

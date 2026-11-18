@@ -165,6 +165,10 @@ export default {
     minutesAgo: '{{count}}m ago',
     hoursAgo: '{{count}}h ago',
     daysAgo: '{{count}}d ago',
+    secondsIn: 'in {{count}}s',
+    minutesIn: 'in {{count}}m',
+    hoursIn: 'in {{count}}h',
+    daysIn: 'in {{count}}d',
   },
   sessions: {
     title: 'Sessions',
@@ -539,7 +543,14 @@ export default {
     formatShellcode: 'Shellcode',
     formatShared: 'Shared Library',
     c2Type: 'C2 Type',
+    c2Listener: 'Active listener',
+    c2ListenerManual: 'Manual — type / host / port below',
+    c2ListenerEmpty: 'No live listeners. Start one on Listeners, or enter host/port manually.',
     c2Host: 'C2 Host',
+    c2HostPlaceholder: 'e.g. 172.25.180.27',
+    c2HostAuto: 'Auto host (listener domain / session / server IP)',
+    c2HostAutoHint: 'Using {{host}}',
+    c2HostRequired: 'C2 host is empty. Turn on Auto host or type a reachable address.',
     c2Port: 'C2 Port',
     detectedListener: 'Detected listener {{name}} at {{host}}:{{port}}',
     detectedOther: 'No {{type}} listener; detected {{name}} listener at {{host}}:{{port}}',
@@ -677,7 +688,7 @@ export default {
     selectBuild: 'Select a build…',
     loadBuild: 'Load build',
     upload: 'Upload .bin',
-    sourceHint: 'Generate format=shared (Windows) or shellcode on',
+    sourceHint: 'Prefer format=shellcode on Implants (in-memory wrap). Shared DLL needs disk_dll or RDI.',
     loadedBuild: 'Loaded {{name}} ({{size}} bytes)',
     uploaded: 'Uploaded {{name}} ({{size}} bytes)',
     blobReady: 'Blob ready: {{size}} bytes · SHA-256 {{hash}}…',
@@ -685,12 +696,22 @@ export default {
     toolsHint: 'Optional. RDI turns a DLL into PIC shellcode. Encoders only change bytes (not a crypter).',
     rdi: 'Convert DLL via RDI first (Unbacked PIC)',
     rdiFn: 'RDI export / function',
-    rdiAuto: 'Non-Windows shared: wrap still compiles the loaded blob. Windows shared uses disk LoadLibrary (see wrap).',
+    rdiAuto: 'Non-Windows shared: wrap still compiles the loaded blob.',
+    preferShellcode:
+      'This is a Windows DLL. Default wrap is in-memory shellcode only — generate format=shellcode, or enable “Disk DLL drop”, or use Tools → RDI. Hash/export morph does not stop Defender from quarantining a plaintext sibling DLL.',
+    diskDllOptIn: 'Disk DLL drop (LoadLibrary sibling — AV often quarantines)',
+    diskDllOptInHint:
+      'Off by default. When on, the host writes the implant DLL next to the EXE. Defender has been quarantining that drop as Gracing.I in this lab.',
+    memOverlayHint:
+      'Shellcode wrap: single EXE, payload stays in the PE overlay and runs in memory (no sibling DLL on disk).',
+    memOverlayCopy:
+      'In-memory overlay: one EXE only. No DLL is written beside it. Keep the process alive until the session appears.',
     diskDllHint:
-      'This is a Windows DLL. Wrap builds a small C EXE that LoadLibrary the DLL from the same folder and calls StartW. Both files download. This is disk MEM_IMAGE, not RDI/unbacked PIC. It still needs a string-clean implant; it is not a Defender bypass.',
+      'Disk DLL mode: host LoadLibrary a sibling DLL and calls the export. This is MEM_IMAGE on disk — Defender may quarantine the drop even when hashes/export names change.',
     wrapDownloadedDll: 'Also downloaded {{name}}. Keep the EXE and DLL in the same folder.',
+    wrapEmbeddedDll: 'Self-contained host embeds {{name}}; dropped next to the EXE on run.',
     diskDllCopy:
-      'Disk LoadLibrary: drop EXE + DLL together. Persistence copies the sibling DLL into Startup. Tools → RDI is the old in-memory PIC path.',
+      'Disk LoadLibrary: EXE drops/loads a sibling DLL. Prefer shellcode wrap when Defender is on.',
     cleanHint:
       'Windows wrap rewrites branding, Go buildinfo, and unused COM exports in place (same length). Protobuf RPC names (sliverpb, GetJitter, ScreenshotReq, …) stay — stock sliver-server needs them. Remaining hits are listed after compile. This is not a Sliver fork and not a Defender bypass.',
     cleanReplaced: 'Rewrote {{count}} branding/buildinfo/export strings (same length).',
@@ -780,8 +801,8 @@ export default {
     persistNone: 'None (default)',
     persistRunkey: 'HKCU Run key (T1547.001)',
     persistSchtask: 'Schtask ONLOGON (T1053.005)',
-    persistLnk: 'Startup folder copy (T1547.001)',
-    persistAllWindows: 'All: Run key + schtask + Startup folder',
+    persistLnk: 'Startup folder shortcut .lnk (T1547.001, E-IMZO style)',
+    persistAllWindows: 'All: Run key + schtask + Startup .lnk',
     persistSystemd: 'User systemd unit (T1543.002)',
     persistCron: 'User crontab @reboot (T1053.003)',
     persistAllLinux: 'All: user systemd + crontab @reboot',
@@ -793,9 +814,9 @@ export default {
     cleanup: {
       runkey_hkcu: 'Cleanup: reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v {{name}} /f',
       schtask_logon: 'Cleanup: schtasks /delete /tn {{name}} /f',
-      startup_lnk: 'Cleanup: delete %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{{name}}.exe',
+      startup_lnk: 'Cleanup: delete %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{{name}}.lnk',
       all_windows:
-        'Cleanup all three: reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v {{name}} /f ; schtasks /delete /tn {{name}} /f ; delete %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{{name}}.exe',
+        'Cleanup all three: reg delete HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run /v {{name}} /f ; schtasks /delete /tn {{name}} /f ; delete %APPDATA%\\Microsoft\\Windows\\Start Menu\\Programs\\Startup\\{{name}}.lnk',
       systemd_user: 'Cleanup: systemctl --user disable --now {{name}}.service; rm ~/.config/systemd/user/{{name}}.service',
       cron: 'Cleanup: crontab -e and remove the @reboot line for this binary',
       all_linux:

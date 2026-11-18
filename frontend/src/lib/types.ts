@@ -58,6 +58,8 @@ export interface ServerInfo {
   version: string
   connected: boolean
   error?: string
+  /** Non-loopback IPv4 addresses on the UI/teamserver host for implant C2. */
+  callback_hosts?: string[]
 }
 
 export interface OverviewCounts {

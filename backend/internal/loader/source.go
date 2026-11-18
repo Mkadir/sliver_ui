@@ -182,7 +182,10 @@ TEXT ·jump(SB),NOSPLIT,$0-16
 	MOVQ SP, R12
 	MOVQ BX, SP
 	ANDQ $0xfffffffffffffff0, SP
-	SUBQ $40, SP
+	// Win64: RSP must be 16-byte aligned *before* CALL. Shadow space is 32
+	// bytes; SUB $40 leaves RSP ≡ 8 (mod 16) and Donut/MSVC PIC then faults
+	// on MOVAPS. SUB $32 keeps alignment.
+	SUBQ $32, SP
 	CALL AX
 	MOVQ R12, SP
 	POPQ R12

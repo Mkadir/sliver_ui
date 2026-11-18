@@ -11,3 +11,16 @@ func durationSeconds(sec int64) int64 {
 	}
 	return sec * int64(time.Second)
 }
+
+// durationToSeconds converts a Sliver time.Duration int64 back to seconds
+// for the UI. Values smaller than one second are treated as already-seconds
+// so a legacy generate that stored "60" (meaning 60ns) still displays as 60.
+func durationToSeconds(ns int64) int64 {
+	if ns <= 0 {
+		return 0
+	}
+	if ns < int64(time.Second) {
+		return ns
+	}
+	return ns / int64(time.Second)
+}

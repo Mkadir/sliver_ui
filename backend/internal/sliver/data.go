@@ -332,6 +332,15 @@ func sessionToView(s *clientpb.Session) SessionView {
 }
 
 func beaconToView(b *clientpb.Beacon) BeaconView {
+	interval := durationToSeconds(b.Interval)
+	jitter := durationToSeconds(b.Jitter)
+	next := b.NextCheckin
+	// Generate used to store interval as seconds-in-a-Duration-field (60ns).
+	// The implant then reports NextCheckin = now+0, so the UI showed "now"
+	// for both columns. Fall back to last+interval so the row looks alive.
+	if next <= b.LastCheckin && interval > 0 {
+		next = b.LastCheckin + interval
+	}
 	return BeaconView{
 		ID:            b.ID,
 		Name:          b.Name,
@@ -343,9 +352,9 @@ func beaconToView(b *clientpb.Beacon) BeaconView {
 		Transport:     b.Transport,
 		RemoteAddress: b.RemoteAddress,
 		LastCheckin:   unixTimeString(b.LastCheckin),
-		NextCheckin:   unixTimeString(b.NextCheckin),
-		Interval:      b.Interval,
-		Jitter:        b.Jitter,
+		NextCheckin:   unixTimeString(next),
+		Interval:      interval,
+		Jitter:        jitter,
 		ActiveC2:      b.ActiveC2,
 	}
 }

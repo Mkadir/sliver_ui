@@ -12,22 +12,8 @@ import ContextMenu from '../components/common/ContextMenu'
 import EmptyState from '../components/common/EmptyState'
 import PivotGraphView from '../components/session/PivotGraphView'
 import { useToast } from '../components/common/Toast'
+import { fmtRelativeTime } from '../lib/time'
 import './pages.css'
-
-type TFunc = ReturnType<typeof useTranslation>['t']
-
-function fmtTime(ts: string, t: TFunc): string {
-  if (!ts) return '-'
-  const d = new Date(ts)
-  if (Number.isNaN(d.getTime())) return ts
-  const now = Date.now()
-  const diff = Math.round((now - d.getTime()) / 1000)
-  if (diff < 0) return t('time.justNow')
-  if (diff < 60) return t('time.secondsAgo', { count: diff })
-  if (diff < 3600) return t('time.minutesAgo', { count: Math.round(diff / 60) })
-  if (diff < 86400) return t('time.hoursAgo', { count: Math.round(diff / 3600) })
-  return t('time.daysAgo', { count: Math.round(diff / 86400) })
-}
 
 export default function SessionsPage() {
   const [sessions, setSessions] = useState<Session[]>([])
@@ -202,7 +188,7 @@ export default function SessionsPage() {
       label: t('sessions.thCheckin'),
       sortable: true,
       sortValue: (s) => new Date(s.LastCheckin).getTime(),
-      render: (s) => fmtTime(s.LastCheckin, t),
+      render: (s) => fmtRelativeTime(s.LastCheckin, t),
     },
     {
       key: 'Status',
