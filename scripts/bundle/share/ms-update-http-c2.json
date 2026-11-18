@@ -1,0 +1,65 @@
+{
+  "Name": "ms-update",
+  "ImplantConfig": {
+    "UserAgent": "Microsoft-Delivery-Optimization/10.0",
+    "ChromeBaseVersion": 0,
+    "NonceQueryArgChars": "abcdefghijklmnopqrstuvwxyz0123456789",
+    "NonceQueryLength": 8,
+    "NonceMode": "Hex",
+    "MaxFileGen": 3,
+    "MinFileGen": 1,
+    "MaxPathGen": 3,
+    "MinPathGen": 1,
+    "MaxPathLength": 64,
+    "MinPathLength": 8,
+    "Extensions": [
+      ".cab",
+      ".exe",
+      ".ps1"
+    ],
+    "PathSegments": [
+      {
+        "IsFile": false,
+        "Value": "v11"
+      },
+      {
+        "IsFile": false,
+        "Value": "deliveryoptimization"
+      },
+      {
+        "IsFile": true,
+        "Value": "files"
+      }
+    ],
+    "Headers": [
+      {
+        "Method": "",
+        "Name": "Accept",
+        "Value": "*/*",
+        "Probability": 100
+      },
+      {
+        "Method": "",
+        "Name": "Accept-Encoding",
+        "Value": "gzip, deflate",
+        "Probability": 100
+      }
+    ]
+  },
+  "ServerConfig": {
+    "RandomVersionHeaders": true,
+    "Headers": [
+      {
+        "Method": "",
+        "Name": "Content-Type",
+        "Value": "application/octet-stream",
+        "Probability": 100
+      }
+    ],
+    "Cookies": [
+      {
+        "Name": "do-session"
+      }
+    ]
+  }
+}

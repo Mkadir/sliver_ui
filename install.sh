@@ -20,15 +20,19 @@
 #   --no-start           Enable the unit but do not start it now
 #   -h, --help           Show help
 #
-# Requires: curl (or wget). Optional: go + node/npm for source builds.
+# Requires: go + node/npm for source builds (or a prebuilt ./sliver-ui next to this script).
+# Does NOT download this project's GitHub releases unless ALLOW_GITHUB_RELEASE=1.
 # Integrates with: sliver-client configs in ~/.sliver-client/configs/
 #                  and systemd unit sliver.service when present.
+#
+# Prefer: ./builder.sh install   or   offline pack: ./builder.sh pack
 
 set -euo pipefail
 
 REPO_OWNER="${REPO_OWNER:-9Insomnie}"
 REPO_NAME="${REPO_NAME:-sliver_ui}"
 RELEASE_TAG="${RELEASE_TAG:-latest}"
+ALLOW_GITHUB_RELEASE="${ALLOW_GITHUB_RELEASE:-0}"
 
 ADDR="127.0.0.1:8080"
 PROFILE=""
@@ -182,7 +186,11 @@ obtain_binary() {
     return
   fi
 
-  local os arch tag url tmp
+  if [[ "$ALLOW_GITHUB_RELEASE" != "1" ]]; then
+    die "no local ./sliver-ui and no source build — run: ./builder.sh install   or pack an offline bundle: ./builder.sh pack   (set ALLOW_GITHUB_RELEASE=1 only if you intentionally want a GitHub release binary)"
+  fi
+
+  local os arch url tmp
   os="$(detect_os)"
   arch="$(detect_arch)"
   if [[ "$RELEASE_TAG" == "latest" ]]; then
@@ -191,12 +199,12 @@ obtain_binary() {
     url="https://github.com/${REPO_OWNER}/${REPO_NAME}/releases/download/${RELEASE_TAG}/sliver-ui-${os}-${arch}"
   fi
   tmp="$(mktemp)"
-  log "downloading ${url}"
+  log "downloading ${url} (ALLOW_GITHUB_RELEASE=1)"
   download "$url" "$tmp"
   mv -f "$tmp" "$TARGET_BIN"
   chmod 755 "$TARGET_BIN"
   ok "installed release binary → ${TARGET_BIN}"
-  warn "upstream release may not include local patches (UI login). Prefer --build from this repo when possible."
+  warn "upstream release may not include local patches. Prefer ./builder.sh pack for offline distribution."
 }
 
 obtain_binary
@@ -437,7 +445,6 @@ write_unit() {
   cat > "${INSTALL_UNIT_DIR}/sliver-ui.service" <<EOF
 [Unit]
 Description=Sliver UI (web console)
-Documentation=https://github.com/${REPO_OWNER}/${REPO_NAME}
 After=network-online.target sliver.service
 Wants=network-online.target sliver.service
 

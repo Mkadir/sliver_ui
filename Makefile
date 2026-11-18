@@ -10,7 +10,7 @@ ifeq ($(GOOS),windows)
 GO_LDFLAGS += -H=windowsgui
 endif
 
-.PHONY: all frontend-build backend-build build test vet run dev clean sliver-server sliverpatch
+.PHONY: all frontend-build backend-build build test vet run dev clean sliver-server sliverpatch pack-bundle
 
 all: build
 
@@ -55,6 +55,10 @@ sliverpatch:
 ## sliver-server: fetch v1.7.3, patch generator, build sliver-server + sliver-client.
 sliver-server:
 	bash scripts/build-sliver-server.sh
+
+## pack-bundle: offline tar.gz under dist/ (binaries + setup.sh; no GitHub required on target).
+pack-bundle:
+	bash scripts/pack-release-bundle.sh
 
 ## clean: remove build artifacts (keeps backend/web/dist/.gitkeep for go:embed).
 clean:

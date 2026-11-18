@@ -65,6 +65,15 @@ Obfuscate va Evasion — compile-time flaglar. Unique SHA-256 faqat **aniq-hash 
 
 Kuzatuv: [`docs/P1_OPERATOR_WORK.md`](./docs/P1_OPERATOR_WORK.md) · tadqiqot: [`reports/Sliver UI imkoniyatlar tahlili.md`](./reports/Sliver%20UI%20imkoniyatlar%20tahlili.md) · loaderlar: [`docs/LOADER_AV_OPSEC_PLAN.md`](./docs/LOADER_AV_OPSEC_PLAN.md) · AV qatlamlar: [`docs/AV_LAYERS_CLOSE_PLAN.md`](./docs/AV_LAYERS_CLOSE_PLAN.md)
 
+### Offline builder (targetda GitHub kerak emas)
+
+```bash
+./builder.sh install          # shu mashina: build + server+UI+systemd
+./builder.sh pack             # dist/sliver-ui-bundle-*.tar.gz — boshqalarga berish
+```
+
+Qabul qiluvchi arxivni ochib `bash setup.sh` (Linux) yoki `setup.ps1` (Windows → WSL) ishlatadi. Bundle bu repoti GitHubdan yuklamaydi.
+
 ---
 
 ## Nimalar qilindi
