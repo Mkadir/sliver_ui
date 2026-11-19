@@ -41,10 +41,10 @@ echo "[*] building sliver-server (first run downloads Go/garble/zig assets — s
   # Go 1.27+ may enable jsonv2 by default; Sliver's vendored
   # go-json-experiment alias expects APIs not present there.
   export GOEXPERIMENT="${GOEXPERIMENT:-nojsonv2}"
-  CGO_ENABLED=0 go build -mod=vendor -trimpath -tags go_sqlite,server \
+  CGO_ENABLED=0 go build -mod=vendor -trimpath -buildvcs=false -tags go_sqlite,server \
     -ldflags "-s -w" \
     -o "$OUT" ./server
-  CGO_ENABLED=0 go build -mod=vendor -trimpath -tags go_sqlite,client \
+  CGO_ENABLED=0 go build -mod=vendor -trimpath -buildvcs=false -tags go_sqlite,client \
     -ldflags "-s -w" \
     -o "$CLIENT_OUT" ./client
 )

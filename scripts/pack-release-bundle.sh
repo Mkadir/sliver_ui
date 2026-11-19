@@ -40,11 +40,12 @@ tarball="${OUT_DIR}/${name}.tar.gz"
 cd "$ROOT"
 
 if [[ "$SKIP_BUILD" -eq 0 ]]; then
-  echo "[*] building UI (make build)…"
-  make build
-  echo "[*] building patched sliver-server…"
-  export GOCACHE="${GOCACHE:-/tmp/go-cache-sliver}"
+  echo "[*] building scrubbed UI (trimpath, -buildvcs=false, CGO off)…"
+  export GOCACHE="${GOCACHE:-/tmp/go-cache-sliver-scrub}"
   export GOEXPERIMENT="${GOEXPERIMENT:-nojsonv2}"
+  mkdir -p "$GOCACHE"
+  make build
+  echo "[*] building scrubbed patched sliver-server…"
   bash scripts/build-sliver-server.sh
 fi
 
@@ -66,6 +67,26 @@ if grep -qE 'github.com/.*/releases/.*/sliver-ui-' "${stage}/setup.sh"; then
   echo "refusing to pack: setup.sh still downloads UI from GitHub" >&2
   exit 1
 fi
+
+echo "[*] scrub check (no local home / fork names in binaries)…"
+fail=0
+for b in sliver-ui sliver-server sliver-client; do
+  if strings "${stage}/bin/${b}" | rg -q '/home/cup|/Users/|/home/[^/]+/Documents/personal/sliv'; then
+    echo "  FAIL ${b}: local path strings still present" >&2
+    fail=1
+  fi
+  if strings "${stage}/bin/${b}" | rg -qi 'Mkadir|9Insomnie'; then
+    echo "  FAIL ${b}: fork/org name strings present" >&2
+    fail=1
+  fi
+done
+if [[ "$fail" -ne 0 ]]; then
+  echo "refusing to pack: scrub failed (rebuild with -trimpath -buildvcs=false)" >&2
+  rm -rf "$stage"
+  exit 1
+fi
+ok_scrub() { echo "  OK scrub"; }
+ok_scrub
 
 tar -C "$OUT_DIR" -czf "$tarball" "$name"
 rm -rf "$stage"

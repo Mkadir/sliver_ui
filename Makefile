@@ -22,9 +22,9 @@ frontend-build:
 	mkdir -p backend/web/dist
 	cp -r frontend/dist/* backend/web/dist/
 
-## backend-build: build the single Go binary.
+## backend-build: build the single Go binary (trimpath, no VCS stamp — safer for bundles).
 backend-build:
-	cd backend && $(GO) build -ldflags "$(GO_LDFLAGS)" -o ../$(BIN) .
+	cd backend && CGO_ENABLED=0 $(GO) build -trimpath -buildvcs=false -ldflags "-s -w $(GO_LDFLAGS)" -o ../$(BIN) .
 
 ## build: full single-binary production build (frontend embedded in backend).
 build: frontend-build backend-build
