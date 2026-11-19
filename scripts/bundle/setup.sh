@@ -4,10 +4,10 @@
 #
 # Usage (from the extracted bundle directory):
 #   bash setup.sh
-#   bash setup.sh --addr 0.0.0.0:8080 --user admin --pass '…'
+#   bash setup.sh --addr 127.0.0.1:8080 --user admin --pass '…'
 #
 # Flags:
-#   --addr HOST:PORT   UI listen (default 127.0.0.1:8080)
+#   --addr HOST:PORT   UI listen (default 0.0.0.0:8080 — all interfaces, no reverse proxy)
 #   --user / --pass    UI login (random pass if omitted)
 #   --no-auth          Disable UI login
 #   --prefix DIR       Install prefix (default ~/.local/share/sliver-ui)
@@ -18,7 +18,7 @@
 
 set -euo pipefail
 
-ADDR="127.0.0.1:8080"
+ADDR="0.0.0.0:8080"
 UI_USER="admin"
 UI_PASS=""
 NO_AUTH=0
@@ -276,18 +276,22 @@ seed_ms_update() {
 [[ "$NO_START" -eq 0 ]] && seed_ms_update || true
 
 UI_URL="http://${ADDR}/"
-[[ "$ADDR" == 0.0.0.0:* ]] && UI_URL="http://127.0.0.1:${ADDR##*:}/"
+PORT="${ADDR##*:}"
+[[ "$ADDR" == 0.0.0.0:* || "$ADDR" == "[::]:"* ]] && UI_URL="http://127.0.0.1:${PORT}/"
 
 echo
 ok "ready — open the UI and generate"
 echo
-printf '  UI:       %s\n' "$UI_URL"
-printf '  Profile:  %s (127.0.0.1:31337)\n' "$PROFILE"
+printf '  Listen:   %s (all interfaces; no nginx required)\n' "$ADDR"
+printf '  Local:    %s\n' "$UI_URL"
+printf '  Remote:   http://<server-ip>:%s/\n' "$PORT"
+printf '  Profile:  %s (UI↔teamserver on 127.0.0.1:31337)\n' "$PROFILE"
 if [[ "$NO_AUTH" -eq 0 ]]; then
   printf '  Login:    %s / %s\n' "$UI_USER" "$UI_PASS"
   printf '  Env:      %s\n' "$ENV_FILE"
 fi
 echo
+echo "  Open firewall for TCP ${PORT} if clients reach this host directly."
 echo "  Next: Implants → windows/amd64 → format=shared → HTTPS + ms-update → Generate"
 echo "        then Loaders → disk LoadLibrary wrap."
 echo

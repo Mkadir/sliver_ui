@@ -96,7 +96,7 @@ Shu forkda ship qilingan ishlar, bosqichma-bosqich.
 - Middleware `/api/*` va `/ws/*` ni yopadi. Login, `/api/auth/me` va SPA ochiq.
 - [`install.sh`](./install.sh): binary, profil `*.cfg` → `*.json`, localhost profilni avto-tanlash, env fayl, `sliver-ui.service`, `sliver.service` dan `Wants=`.
 - Flaglar: `--addr`, `--profile`, `--user`/`--pass`, `--no-auth`, `--build`, `--with-server` (default), `--no-server`, `--replace-server`, `--prefix`, `--skip-systemd`, `--no-start`. `--replace-server` jonli `sliver.service` ni bundled patched unit bilan almashtiradi (User=cup, `~/.sliver`). Operator `--permissions all`. Proto nomlari `proto-idents.json` seed bilan server va UI da bir xil.
-- Default listen `127.0.0.1:8080`. Windows GUI-subsystem + WebView2; Linux/macOS HTTP. Windows loglari `sliver-ui.log` ga yoziladi.
+- Default listen `0.0.0.0:8080` (install/bundle; barcha interfeys, nginx shart emas). Faqat localhost: `--addr 127.0.0.1:8080`. Windows GUI-subsystem + WebView2; Linux/macOS HTTP. Windows loglari `sliver-ui.log` ga yoziladi.
 
 ### 3. Loaders / AV OPSEC (`/loaders`)
 

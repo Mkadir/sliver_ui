@@ -34,7 +34,8 @@ install  — build from this checkout and install sliver-server + sliver-ui (sys
 pack     — produce an offline tar.gz under dist/ for other machines (no GitHub clone).
 
 Examples:
-  ./builder.sh install --addr 0.0.0.0:8080 --user admin
+  ./builder.sh install --user admin          # default listen 0.0.0.0:8080
+  ./builder.sh install --addr 127.0.0.1:8080  # localhost only
   ./builder.sh pack
 EOF
     exit 0

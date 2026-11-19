@@ -6,7 +6,7 @@
 #   bash install.sh
 #
 # Optional flags:
-#   --addr HOST:PORT     Listen address (default: 127.0.0.1:8080)
+#   --addr HOST:PORT     Listen address (default: 0.0.0.0:8080)
 #   --profile NAME       sliver-client profile to auto-connect (auto-detect if omitted)
 #   --user NAME          UI login username (default: admin)
 #   --pass PASS          UI login password (random if omitted)
@@ -34,7 +34,7 @@ REPO_NAME="${REPO_NAME:-sliver_ui}"
 RELEASE_TAG="${RELEASE_TAG:-latest}"
 ALLOW_GITHUB_RELEASE="${ALLOW_GITHUB_RELEASE:-0}"
 
-ADDR="127.0.0.1:8080"
+ADDR="0.0.0.0:8080"
 PROFILE=""
 UI_USER="admin"
 UI_PASS=""

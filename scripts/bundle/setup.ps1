@@ -5,10 +5,10 @@
 #   powershell -ExecutionPolicy Bypass -File .\setup.ps1
 #   .\setup.ps1 -Addr 0.0.0.0:8080 -User admin -Pass 'yourpass'
 #
-# Then open http://127.0.0.1:8080/ in Windows browser (WSL forwards localhost).
+# Default listen is 0.0.0.0:8080 (reachable without nginx). Local browse: http://127.0.0.1:8080/
 
 param(
-  [string]$Addr = "127.0.0.1:8080",
+  [string]$Addr = "0.0.0.0:8080",
   [string]$User = "admin",
   [string]$Pass = "",
   [switch]$NoAuth,
@@ -50,5 +50,5 @@ if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $port = ($Addr -split ":")[-1]
 Write-Host ""
-Write-Host "[+] Open in Windows: http://127.0.0.1:$port/" -ForegroundColor Green
+Write-Host "[+] Listen $Addr — local: http://127.0.0.1:$port/  remote: http://<server-ip>:$port/" -ForegroundColor Green
 Write-Host "    Login credentials were printed by setup.sh above."

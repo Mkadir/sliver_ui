@@ -97,7 +97,7 @@ Work shipped in this fork, grouped by phase.
 - [`install.sh`](./install.sh): binary, profile mirror `*.cfg` → `*.json`, localhost profile auto-pick, env file, `sliver-ui.service`, `Wants=` from `sliver.service`.
 - Flags: `--addr`, `--profile`, `--user`/`--pass`, `--no-auth`, `--build`, `--with-server` (default), `--no-server`, `--replace-server`, `--prefix`, `--skip-systemd`, `--no-start`.
 - `--with-server` clones BishopFox/sliver **v1.7.3** into `third_party/sliver/` (gitignored), applies **generator patches** (Donut none, StartW-only exports, inline max-errors, per-generate polymorph) plus a **shared proto name map** (`patches/sliver-v1.7.3/proto-idents.json`, same seed on server and UI). Builds `sliver-server` + `sliver-client`, installs them next to the UI, issues a `127.0.0.1:31337` operator (`--permissions all`), and writes `sliver.service`. Rebuild both after a proto Apply. `--replace-server` overwrites a live `sliver.service`.
-- Default listen `127.0.0.1:8080`. Windows GUI-subsystem + WebView2; Linux/macOS HTTP. Logs on Windows mirrored to `sliver-ui.log`.
+- Default listen `0.0.0.0:8080` (install/bundle; all interfaces, no reverse proxy required). Pass `--addr 127.0.0.1:8080` for localhost only. Windows GUI-subsystem + WebView2; Linux/macOS HTTP. Logs on Windows mirrored to `sliver-ui.log`.
 
 ### 3. Loaders / AV OPSEC (`/loaders`)
 

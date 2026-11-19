@@ -20,10 +20,11 @@ tar xzf sliver-ui-bundle-linux-amd64-*.tar.gz
 cd sliver-ui-bundle-linux-amd64
 bash setup.sh
 # optional:
-# bash setup.sh --addr 0.0.0.0:8080 --replace-server
+# bash setup.sh --addr 127.0.0.1:8080   # localhost only
+# bash setup.sh --replace-server
 ```
 
-Open the printed URL (default `http://127.0.0.1:8080/`), log in, then:
+Default listen is **`0.0.0.0:8080`** (all interfaces, no nginx). Open `http://127.0.0.1:8080/` on the host or `http://<server-ip>:8080/` from another machine, log in, then:
 
 1. **Listeners** → HTTPS (e.g. `:8443` if you are not root for `:443`)
 2. **Implants** → windows/amd64 · `format=shared` · HTTPS · HTTP C2 `ms-update` → Generate
@@ -40,7 +41,7 @@ cd \path\to\sliver-ui-bundle-linux-amd64
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
-Browse to `http://127.0.0.1:8080/` from Windows.
+Browse to `http://127.0.0.1:8080/` (or the Windows host IP on port 8080) from Windows.
 
 ## Notes
 
