@@ -1,11 +1,11 @@
 # Offline Windows entrypoint: runs the Linux setup.sh inside WSL.
 # The packed binaries are Linux ELF — use WSL2 (Ubuntu recommended).
+# setup.sh fully cleans any previous install and installs deps (git, …).
 #
 # Usage (PowerShell, from the extracted bundle folder):
 #   powershell -ExecutionPolicy Bypass -File .\setup.ps1
-#   .\setup.ps1 -Addr 0.0.0.0:8080 -User admin -Pass 'yourpass'
 #
-# Default listen is 0.0.0.0:8080 (reachable without nginx). Local browse: http://127.0.0.1:8080/
+# Default listen is 0.0.0.0:8080. Local browse: http://127.0.0.1:8080/
 
 param(
   [string]$Addr = "0.0.0.0:8080",

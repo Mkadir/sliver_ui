@@ -1,53 +1,47 @@
 # Sliver UI offline bundle
 
-This archive is **self-contained**. It does **not** download this project from GitHub.
-
-## Contents
-
-| Path | Role |
-|---|---|
-| `bin/sliver-server` | Generator-patched teamserver |
-| `bin/sliver-ui` | Web UI (embeds frontend) |
-| `bin/sliver-client` | Optional CLI |
-| `setup.sh` | Linux/macOS installer |
-| `setup.ps1` | Windows → WSL wrapper |
-| `share/ms-update-http-c2.json` | Non-default HTTP C2 profile seed |
-
-## Linux
+**Serverda faqat shu:**
 
 ```bash
 tar xzf sliver-ui-bundle-linux-amd64-*.tar.gz
-cd sliver-ui-bundle-linux-amd64
+cd sliver-ui-bundle-linux-amd64-*
 bash setup.sh
-# optional:
-# bash setup.sh --addr 127.0.0.1:8080   # localhost only
-# bash setup.sh --replace-server
 ```
 
-Default listen is **`0.0.0.0:8080`** (all interfaces, no nginx). Open `http://127.0.0.1:8080/` on the host or `http://<server-ip>:8080/` from another machine, log in, then:
+Boshqa hech narsa (`git`, PATH, eski service tozalash, systemd) — `setup.sh` o‘zi qiladi.
 
-1. **Listeners** → HTTPS (e.g. `:8443` if you are not root for `:443`)
-2. **Implants** → windows/amd64 · `format=shared` · HTTPS · HTTP C2 `ms-update` → Generate
-3. **Loaders** → disk LoadLibrary wrap → download EXE+DLL
+## What setup.sh does
+
+1. Installs OS deps (`git`, `curl`, …) — **generate** fails without `git`
+2. **Full clean** of previous install (systemd units, binaries, `~/.sliver`, UI env, operator profile). Use `--keep-data` only if you intentionally want to keep DB/creds
+3. Installs `sliver-server` + `sliver-ui` + `sliver-client`
+4. Creates `~/bin/sliver` → `sliver-client` and fixes PATH
+5. Issues operator `sliverui`, starts services on **`0.0.0.0:8080`**
+6. Seeds `ms-update` HTTP C2 when possible
+7. Writes login to `~/.local/share/sliver-ui/CREDENTIALS.txt`
+
+Does **not** download this project from GitHub.
 
 ## Windows
 
-Binaries in this bundle are **Linux ELF**. Use **WSL2**:
+Binaries are Linux ELF. Use WSL2:
 
 ```powershell
-wsl --install -d Ubuntu   # once
-# copy/extract the bundle into a path WSL can see, then:
-cd \path\to\sliver-ui-bundle-linux-amd64
+cd \path\to\extracted-bundle
 powershell -ExecutionPolicy Bypass -File .\setup.ps1
 ```
 
-Browse to `http://127.0.0.1:8080/` (or the Windows host IP on port 8080) from Windows.
+## Optional flags
 
-## Notes
+```bash
+bash setup.sh --addr 127.0.0.1:8080   # localhost only
+bash setup.sh --user admin --pass '…'
+bash setup.sh --keep-data             # do not wipe ~/.sliver / env
+bash setup.sh --skip-systemd          # nohup instead of systemd
+```
 
-- **Requires `git` on PATH** for implant generate (garble applies linker patches via `git apply`). `setup.sh` tries to install it when run as root; otherwise: `apt install git` / `dnf install git`.
-- CLI name: binaries are `sliver-server`, `sliver-ui`, `sliver-client`. Setup also creates `~/bin/sliver` → `sliver-client` and prepends `~/bin` to PATH. There is no upstream binary literally named only `sliver` unless that symlink exists.
-- First `sliver-server` start unpacks Go/zig/garble under `~/.sliver` (needs disk + a bit of time).
-- UI talks to the local teamserver via operator profile `sliverui` (`127.0.0.1:31337`).
-- Reinstall keeps existing UI password in `~/.config/sliver-ui/env` unless you pass `--pass`.
-- This is for authorized lab / engagement use only.
+## After setup
+
+Open `http://<server-ip>:8080/` (or `http://127.0.0.1:8080/`), log in with credentials printed by setup (also in `CREDENTIALS.txt`).
+
+Then: Implants → windows/amd64 → `shared` → HTTPS + `ms-update` → Generate → Loaders disk LoadLibrary.

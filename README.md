@@ -72,7 +72,13 @@ Tracking: [`docs/P1_OPERATOR_WORK.md`](./docs/P1_OPERATOR_WORK.md) · research: 
 ./builder.sh pack             # write dist/sliver-ui-bundle-*.tar.gz for others
 ```
 
-Recipients unpack the tarball and run `bash setup.sh` (Linux) or `setup.ps1` (Windows → WSL). The bundle does **not** download this repo from GitHub. Implant **generate needs `git`** on the host (`garble` runs `git apply`); setup tries to install it as root. CLI: use `sliver-client` or the `sliver` symlink in `~/bin`.
+Recipients only need:
+
+```bash
+tar xzf sliver-ui-bundle-*.tar.gz && cd sliver-ui-bundle-* && bash setup.sh
+```
+
+`setup.sh` fully removes any previous install, installs deps (`git`, …), wires server+UI, and starts on `0.0.0.0:8080`. No GitHub download. CLI: `sliver` symlink in `~/bin`.
 
 ---
 
