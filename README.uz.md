@@ -72,7 +72,13 @@ Kuzatuv: [`docs/P1_OPERATOR_WORK.md`](./docs/P1_OPERATOR_WORK.md) · tadqiqot: [
 ./builder.sh pack             # dist/sliver-ui-bundle-*.tar.gz — boshqalarga berish
 ```
 
-Qabul qiluvchi arxivni ochib `bash setup.sh` (Linux) yoki `setup.ps1` (Windows → WSL) ishlatadi. Bundle bu repoti GitHubdan yuklamaydi. Implant **generate uchun `git` kerak** (garble `git apply` qiladi); setup root bo‘lsa o‘zi o‘rnatishga urinadi. CLI: `sliver-client` yoki `~/bin/sliver` symlink.
+Serverda faqat:
+
+```bash
+tar xzf sliver-ui-bundle-*.tar.gz && cd sliver-ui-bundle-* && bash setup.sh
+```
+
+`setup.sh` eski o‘rnatishni tozalaydi, `git` va boshqa deps ni o‘rnatadi, server+UI ni bog‘lab `0.0.0.0:8080` da ishga tushiradi. GitHubdan yuklamaydi.
 
 ---
 
