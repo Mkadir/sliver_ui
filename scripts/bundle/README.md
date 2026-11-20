@@ -13,14 +13,14 @@ Boshqa hech narsa (`git`, PATH, eski service tozalash, systemd) — `setup.sh` o
 ## What setup.sh does
 
 1. Installs OS deps (`git`, `curl`, …) — **generate** fails without `git`
-2. **Full clean** of previous install (systemd units, binaries, `~/.sliver`, UI env, operator profile). Use `--keep-data` only if you intentionally want to keep DB/creds
-3. Installs `sliver-server` + `sliver-ui` + `sliver-client`
-4. Creates CLI symlinks: `~/bin/sliver` and (with root/sudo) `/usr/local/bin/sliver` → `sliver-client`
-5. Issues operator `sliverui`, starts services on **`0.0.0.0:8080`**
-6. Seeds `ms-update` HTTP C2 when possible
-7. Writes login to `~/.local/share/sliver-ui/CREDENTIALS.txt`
+2. On **≤2GB RAM** VPS, creates a **2GiB swapfile** if swap is missing (otherwise `unpack` / daemon get OOM-killed → UI “unreachable”)
+3. **Full clean** of previous install (systemd, binaries, `~/.sliver`, env, operator). `--keep-data` keeps DB/creds
+4. Installs binaries + `/usr/local/bin/sliver` (with sudo) → `sliver-client`
+5. Unpacks assets, issues operator `sliverui`, starts **`0.0.0.0:8080`**
+6. **Refuses to say “ready”** unless both `:31337` and `:8080` are listening
+7. Seeds `ms-update` when possible; writes `CREDENTIALS.txt`
 
-If `sliver: command not found` without root: `export PATH="$HOME/bin:$PATH"` (or new login shell). With sudo, `/usr/local/bin/sliver` works immediately.
+`Connection to server failed context deadline exceeded` almost always means teamserver died (often OOM on 1GB hosts). Re-run `sudo bash setup.sh` after this build (swap auto).
 
 Does **not** download this project from GitHub.
 

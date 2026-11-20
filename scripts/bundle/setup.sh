@@ -197,6 +197,75 @@ open_firewall() {
   fi
 }
 
+# sliver-server (~256MB binary) + unpack/garble OOMs on 1GB VPS without swap.
+ensure_swap() {
+  local mem_kb swap_kb
+  mem_kb="$(awk '/MemTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  swap_kb="$(awk '/SwapTotal:/{print $2}' /proc/meminfo 2>/dev/null || echo 0)"
+  # Need roughly >=2.5GiB usable; if RAM < 2.2GiB and swap < 1GiB, add 2GiB swapfile.
+  if [[ "${mem_kb}" -ge 2200000 ]]; then
+    ok "RAM ok ($((mem_kb / 1024)) MiB)"
+    return
+  fi
+  if [[ "${swap_kb}" -ge 1000000 ]]; then
+    ok "low RAM ($((mem_kb / 1024)) MiB) but swap present ($((swap_kb / 1024)) MiB)"
+    return
+  fi
+  warn "low RAM ($((mem_kb / 1024)) MiB) and little/no swap — creating 2GiB /swapfile (required for sliver-server)"
+  if ! as_root true 2>/dev/null; then
+    die "need root/sudo to create swap on this 1GB-class host, or add swap manually then re-run"
+  fi
+  if [[ -f /swapfile ]]; then
+    as_root swapon /swapfile >/dev/null 2>&1 || true
+  else
+    as_root fallocate -l 2G /swapfile 2>/dev/null \
+      || as_root dd if=/dev/zero of=/swapfile bs=1M count=2048 status=none
+    as_root chmod 600 /swapfile
+    as_root mkswap /swapfile >/dev/null
+    as_root swapon /swapfile
+  fi
+  if ! grep -q '^/swapfile ' /etc/fstab 2>/dev/null; then
+    echo '/swapfile none swap sw 0 0' | as_root tee -a /etc/fstab >/dev/null
+  fi
+  swap_kb="$(awk '/SwapTotal:/{print $2}' /proc/meminfo)"
+  ok "swap ready ($((swap_kb / 1024)) MiB)"
+}
+
+wait_port() {
+  local port="$1" secs="${2:-60}" i
+  for i in $(seq 1 "$secs"); do
+    if ss -ltn 2>/dev/null | grep -q ":${port} "; then
+      return 0
+    fi
+    sleep 1
+  done
+  return 1
+}
+
+run_unpack() {
+  local logf="${PREFIX}/unpack.log" rc=0
+  mkdir -p "$PREFIX"
+  log "unpacking teamserver assets (needs RAM/swap; may take a minute)…"
+  set +e
+  "$SERVER_BIN" unpack >"$logf" 2>&1
+  rc=$?
+  set -e
+  if [[ "$rc" -eq 0 ]]; then
+    ok "unpack ok"
+    return 0
+  fi
+  # 137 / 9 / "Killed" → almost always OOM on small VPS
+  if grep -qiE 'killed|out of memory|cannot allocate' "$logf" 2>/dev/null \
+    || [[ "$rc" -eq 137 || "$rc" -eq 9 ]]; then
+    die "sliver-server unpack was killed (likely OOM). free -h; ensure swap exists, then: bash setup.sh"
+  fi
+  # dmesg OOM for our process
+  if dmesg 2>/dev/null | tail -30 | grep -qiE 'out of memory|oom-kill|killed process.*sliver'; then
+    die "kernel OOM-killed unpack — add swap (setup does this) and re-run setup.sh"
+  fi
+  warn "unpack exited ${rc} — see ${logf} (continuing; first generate may still work after daemon start)"
+}
+
 ensure_path() {
   export PATH="${HOME}/bin:${PATH}"
   mkdir -p "${HOME}/bin"
@@ -215,6 +284,7 @@ log "offline one-shot setup (no GitHub)"
 log "prefix=${PREFIX} addr=${ADDR}"
 
 install_deps
+ensure_swap
 purge_old
 open_firewall
 ensure_path
@@ -247,11 +317,18 @@ ok "installed binaries → ${INSTALL_BIN} (CLI: sliver → sliver-client)"
 
 # Fresh operator profile after clean (or missing).
 log "issuing operator ${PROFILE}"
-"$SERVER_BIN" unpack >/dev/null 2>&1 || true
+run_unpack
 op_file="${CLIENT_CONFIGS}/${PROFILE}.cfg"
 rm -f "$op_file" "${CLIENT_CONFIGS}/${PROFILE}.json"
-if ! "$SERVER_BIN" operator --name "$PROFILE" --lhost 127.0.0.1 --lport 31337 --permissions all --save "$op_file" >/dev/null 2>&1; then
-  die "could not issue operator config"
+set +e
+"$SERVER_BIN" operator --name "$PROFILE" --lhost 127.0.0.1 --lport 31337 --permissions all --save "$op_file" >"${PREFIX}/operator.log" 2>&1
+op_rc=$?
+set -e
+if [[ "$op_rc" -ne 0 || ! -f "$op_file" ]]; then
+  if dmesg 2>/dev/null | tail -40 | grep -qiE 'oom-kill|killed process.*sliver'; then
+    die "operator issue OOM-killed — need more RAM/swap. free -h && bash setup.sh"
+  fi
+  die "could not issue operator config (rc=${op_rc}) — see ${PREFIX}/operator.log"
 fi
 ln -sfn "${PROFILE}.cfg" "${CLIENT_CONFIGS}/${PROFILE}.json"
 ok "wrote ${op_file}"
@@ -332,10 +409,10 @@ start_direct() {
   log "starting without systemd"
   nohup "$SERVER_BIN" daemon >/tmp/sliver-server.bundle.log 2>&1 &
   ok "sliver-server daemon pid $!"
-  for i in $(seq 1 60); do
-    ss -ltn 2>/dev/null | grep -q ':31337 ' && break
-    sleep 1
-  done
+  if ! wait_port 31337 90; then
+    warn "server log:"; tail -40 /tmp/sliver-server.bundle.log 2>/dev/null || true
+    die "sliver-server did not listen on :31337 — often OOM on 1GB VPS (check free -h / dmesg)"
+  fi
   if [[ "$NO_AUTH" -eq 0 && -f "$ENV_FILE" ]]; then
     set -a
     # shellcheck disable=SC1090
@@ -345,6 +422,7 @@ start_direct() {
   nohup "$UI_BIN" --no-window --no-browser --addr "$ADDR" --profile "$PROFILE" \
     >/tmp/sliver-ui.bundle.log 2>&1 &
   ok "sliver-ui pid $!"
+  wait_port "$PORT" 45 || die "UI did not listen on :${PORT}"
 }
 
 if [[ "$SKIP_SYSTEMD" -eq 1 ]]; then
@@ -374,16 +452,46 @@ elif [[ "$(uname -s)" == "Linux" ]] && have systemctl; then
   if [[ "$NO_START" -eq 0 ]]; then
     systemctl restart sliver.service >/dev/null 2>&1 \
       || systemctl start sliver.service >/dev/null 2>&1 \
-      || start_direct
-    sleep 2
-    systemctl restart sliver-ui.service >/dev/null 2>&1 \
-      || systemctl start sliver-ui.service >/dev/null 2>&1 \
-      || start_direct
-    sleep 2
-    if systemctl is-active --quiet sliver-ui.service 2>/dev/null || ss -ltn 2>/dev/null | grep -Eq ":${PORT} "; then
-      ok "services up"
+      || true
+    if ! wait_port 31337 90; then
+      warn "systemd sliver.service failed to bind :31337 — falling back to direct start"
+      journalctl -u sliver.service -n 40 --no-pager 2>/dev/null | tail -40 || true
+      start_direct
     else
-      warn "UI may not be active — journalctl -u sliver-ui -n 50"
+      ok "sliver-server listening on :31337"
+      systemctl restart sliver-ui.service >/dev/null 2>&1 \
+        || systemctl start sliver-ui.service >/dev/null 2>&1 \
+        || true
+      if ! wait_port "$PORT" 45; then
+        warn "UI systemd unit failed — starting UI directly"
+        if [[ "$NO_AUTH" -eq 0 && -f "$ENV_FILE" ]]; then
+          set -a
+          # shellcheck disable=SC1090
+          . "$ENV_FILE"
+          set +a
+        fi
+        nohup "$UI_BIN" --no-window --no-browser --addr "$ADDR" --profile "$PROFILE" \
+          >/tmp/sliver-ui.bundle.log 2>&1 &
+      fi
+      wait_port "$PORT" 30 || die "UI not listening on :${PORT}"
+    fi
+    # Hard health check: BOTH must be up (UI alone used to print false "services up").
+    if ! wait_port 31337 5; then
+      die "teamserver not on :31337 — UI would show unreachable. journalctl -u sliver -n 80; free -h"
+    fi
+    if ! wait_port "$PORT" 5; then
+      die "UI not on :${PORT}"
+    fi
+    ok "services up (31337 + ${PORT})"
+    # Quick RPC smoke: sliver version against local daemon
+    if [[ -x "${HOME}/bin/sliver" ]] || have sliver; then
+      export PATH="${HOME}/bin:/usr/local/bin:${PATH}"
+      if timeout 15 sliver version >/dev/null 2>&1 || timeout 15 "${HOME}/bin/sliver" version >/dev/null 2>&1; then
+        ok "sliver CLI connected to 127.0.0.1:31337"
+      else
+        warn "sliver CLI could not talk to server yet — wait a few seconds and retry: sliver version"
+        journalctl -u sliver.service -n 20 --no-pager 2>/dev/null | tail -20 || true
+      fi
     fi
   fi
 else
