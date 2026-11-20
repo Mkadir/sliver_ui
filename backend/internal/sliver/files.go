@@ -1,9 +1,14 @@
 package sliver
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"fmt"
+	"io"
+	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/bishopfox/sliver/protobuf/commonpb"
@@ -131,7 +136,42 @@ func (c *Client) Download(sessionID, path string) (string, string, error) {
 	if !resp.Exists {
 		return "", "", fmt.Errorf("remote file %q does not exist", path)
 	}
-	return encodeBase64(resp.Data), resp.Path, nil
+	raw, err := decodeDownloadPayload(resp.GetEncoder(), resp.Data)
+	if err != nil {
+		return "", "", fmt.Errorf("decode download (%s): %w", resp.GetEncoder(), err)
+	}
+	// Browser <a download> needs a basename, not a remote absolute path.
+	name := filepath.Base(strings.ReplaceAll(resp.Path, "\\", "/"))
+	if name == "" || name == "." || name == "/" {
+		name = filepath.Base(strings.ReplaceAll(path, "\\", "/"))
+	}
+	return encodeBase64(raw), name, nil
+}
+
+// decodeDownloadPayload mirrors the official Sliver client: implant often
+// sets Encoder=gzip and sends compressed bytes. Without this, UI downloads
+// look like mojibake / unreadable even for plain .txt/.env files.
+func decodeDownloadPayload(encoder string, data []byte) ([]byte, error) {
+	enc := strings.ToLower(strings.TrimSpace(encoder))
+	if enc == "" || enc == "raw" || enc == "none" {
+		return data, nil
+	}
+	if enc != "gzip" {
+		return nil, fmt.Errorf("unsupported download encoder %q", encoder)
+	}
+	if len(data) == 0 {
+		return data, nil
+	}
+	zr, err := gzip.NewReader(bytes.NewReader(data))
+	if err != nil {
+		return nil, err
+	}
+	defer zr.Close()
+	out, err := io.ReadAll(zr)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
 }
 
 // Upload writes data to a file on the session.

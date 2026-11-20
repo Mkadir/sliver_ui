@@ -1,6 +1,8 @@
 package sliver
 
 import (
+	"bytes"
+	"compress/gzip"
 	"testing"
 
 	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
@@ -50,5 +52,28 @@ func TestEncodeBase64(t *testing.T) {
 	}
 	if encodeBase64(nil) != "" {
 		t.Fatal("nil should produce empty string")
+	}
+}
+
+func TestDecodeDownloadPayload_Gzip(t *testing.T) {
+	plain := []byte("DATABASE_URL=postgres://local\n")
+	var buf bytes.Buffer
+	zw := gzip.NewWriter(&buf)
+	if _, err := zw.Write(plain); err != nil {
+		t.Fatal(err)
+	}
+	if err := zw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got, err := decodeDownloadPayload("gzip", buf.Bytes())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, plain) {
+		t.Fatalf("got %q want %q", got, plain)
+	}
+	raw, err := decodeDownloadPayload("", plain)
+	if err != nil || !bytes.Equal(raw, plain) {
+		t.Fatalf("raw passthrough: %v %q", err, raw)
 	}
 }

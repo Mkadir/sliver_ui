@@ -1,17 +1,25 @@
 export function base64ToBytes(b64: string): ArrayBuffer {
-  const binary = atob(b64)
+  // Strip whitespace/newlines some proxies insert into JSON strings.
+  const clean = b64.replace(/\s/g, '')
+  const binary = atob(clean)
   const bytes = new Uint8Array(binary.length)
   for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i)
   return bytes.buffer
 }
 
 export function triggerDownload(name: string, bytes: ArrayBuffer | Uint8Array) {
-  const blob = new Blob([bytes as BlobPart], { type: 'application/octet-stream' })
+  // Copy into a standalone Uint8Array so Blob never sees a SharedArrayBuffer view.
+  const src = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes)
+  const copy = new Uint8Array(src.byteLength)
+  copy.set(src)
+  const blob = new Blob([copy], { type: 'application/octet-stream' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
   a.download = name.split(/[\\/]/).pop() || name
+  document.body.appendChild(a)
   a.click()
+  a.remove()
   URL.revokeObjectURL(url)
 }
 
