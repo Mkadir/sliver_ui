@@ -45,7 +45,9 @@ Browse to `http://127.0.0.1:8080/` (or the Windows host IP on port 8080) from Wi
 
 ## Notes
 
-- First `sliver-server` start may unpack assets under `~/.sliver`.
+- **Requires `git` on PATH** for implant generate (garble applies linker patches via `git apply`). `setup.sh` tries to install it when run as root; otherwise: `apt install git` / `dnf install git`.
+- CLI name: binaries are `sliver-server`, `sliver-ui`, `sliver-client`. Setup also creates `~/bin/sliver` → `sliver-client` and prepends `~/bin` to PATH. There is no upstream binary literally named only `sliver` unless that symlink exists.
+- First `sliver-server` start unpacks Go/zig/garble under `~/.sliver` (needs disk + a bit of time).
 - UI talks to the local teamserver via operator profile `sliverui` (`127.0.0.1:31337`).
 - Reinstall keeps existing UI password in `~/.config/sliver-ui/env` unless you pass `--pass`.
 - This is for authorized lab / engagement use only.

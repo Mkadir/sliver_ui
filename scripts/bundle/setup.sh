@@ -71,6 +71,32 @@ done
 [[ "$(uname -s)" == "Linux" || "$(uname -s)" == "Darwin" ]] || die "Linux or macOS required (on Windows use setup.ps1 → WSL)"
 [[ -n "${HOME:-}" ]] || die "HOME is not set"
 
+# Implant generate (garble) shells out to `git apply`. Without git, UI generate returns exit status 1.
+ensure_git() {
+  if have git; then
+    ok "git: $(command -v git)"
+    return
+  fi
+  warn "git not found — implant generate will fail until git is installed"
+  if [[ "$(id -u)" -eq 0 ]] && have apt-get; then
+    log "installing git via apt-get…"
+    DEBIAN_FRONTEND=noninteractive apt-get update -qq >/dev/null 2>&1 || true
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq git >/dev/null 2>&1 || true
+  elif [[ "$(id -u)" -eq 0 ]] && have dnf; then
+    dnf install -y -q git >/dev/null 2>&1 || true
+  elif [[ "$(id -u)" -eq 0 ]] && have yum; then
+    yum install -y -q git >/dev/null 2>&1 || true
+  elif have brew; then
+    brew install git >/dev/null 2>&1 || true
+  fi
+  if have git; then
+    ok "git installed: $(command -v git)"
+  else
+    warn "install git manually (apt/dnf/yum/brew), then retry generate"
+  fi
+}
+ensure_git
+
 for b in sliver-ui sliver-server sliver-client; do
   [[ -x "${BIN_SRC}/${b}" || -f "${BIN_SRC}/${b}" ]] || die "missing ${BIN_SRC}/${b} — unpack the full bundle"
 done
@@ -96,7 +122,18 @@ chmod 755 "$UI_BIN" "$SERVER_BIN" "$CLIENT_BIN"
 ln -sfn "$UI_BIN" "${HOME}/bin/sliver-ui"
 ln -sfn "$SERVER_BIN" "${HOME}/bin/sliver-server"
 ln -sfn "$CLIENT_BIN" "${HOME}/bin/sliver-client"
+# Operators often type `sliver` (upstream CLI name) — point it at our client.
+ln -sfn "$CLIENT_BIN" "${HOME}/bin/sliver"
 ok "installed binaries → ${INSTALL_BIN}"
+# Ensure ~/bin is on PATH for this shell and future logins (best-effort).
+case ":${PATH}:" in
+  *":${HOME}/bin:"*) ;;
+  *) export PATH="${HOME}/bin:${PATH}" ;;
+esac
+if [[ -f "${HOME}/.profile" ]] && ! grep -q 'HOME/bin' "${HOME}/.profile" 2>/dev/null; then
+  printf '\n# sliver-ui bundle\nexport PATH="$HOME/bin:$PATH"\n' >> "${HOME}/.profile"
+fi
+ok "PATH includes ${HOME}/bin (symlink: sliver → sliver-client)"
 
 # Operator profile (wires UI ↔ server)
 if [[ -f "${CLIENT_CONFIGS}/${PROFILE}.cfg" || -f "${CLIENT_CONFIGS}/${PROFILE}.json" ]]; then
@@ -263,8 +300,12 @@ seed_ms_update() {
   if curl -fsS -c "$cj" -H 'Content-Type: application/json' \
     -d "{\"username\":\"${UI_USER}\",\"password\":\"${UI_PASS}\"}" \
     "${base}/api/auth/login" >/dev/null 2>&1; then
+    # Create first (overwrite=false). Some servers return NotFound on overwrite of missing name.
     if curl -fsS -b "$cj" -H 'Content-Type: application/json' \
       -d "{\"overwrite\":false,\"config\":$(cat "${SHARE}/ms-update-http-c2.json")}" \
+      "${base}/api/http-c2-profiles" >/dev/null 2>&1 \
+      || curl -fsS -b "$cj" -H 'Content-Type: application/json' \
+      -d "{\"overwrite\":true,\"config\":$(cat "${SHARE}/ms-update-http-c2.json")}" \
       "${base}/api/http-c2-profiles" >/dev/null 2>&1; then
       ok "seeded HTTP C2 profile ms-update"
     else
