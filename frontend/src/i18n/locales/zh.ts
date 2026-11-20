@@ -558,10 +558,12 @@ export default {
     beaconInterval: '信标间隔（秒）',
     beaconHint: '信标植入体会休眠并按该间隔回连。任务排队直到下次回连。会话植入体保持交互。',
     beaconShort: '信标',
-    obfuscate: '混淆',
+    obfuscate: '混淆 (garble)',
+    obfuscateHint:
+      '运行 garble（-literals -tiny）。需要数 GB 内存；约 1GB VPS 上常会卡住或被 OOM 杀掉。主机不大时请关闭。',
     polymorph: '每次生成都多态',
     polymorphHint:
-      '唯一名称后缀、保持 garble、shellcode 用 Donut 熵 3，并等长改写下载字节中的 bishopfox/buildinfo/COM 导出。Protobuf RPC 名（GetJitter、sliverpb…）保留，以便本 UI 能开会话。回连后内存 YARA 仍可能命中那些串。不是免杀。',
+      '唯一名称后缀 + 强制混淆/garble + shellcode Donut 熵 3 + 等长 branding 改写。小 VPS 上很重。不是免杀。',
     debug: '调试',
     evasion: '规避',
     httpC2Profile: 'HTTP C2 配置',

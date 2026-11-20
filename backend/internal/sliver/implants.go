@@ -416,7 +416,9 @@ func (c *Client) GenerateImplantWithHub(req *GenerateRequest, hub *EventHub) (ma
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Minute)
+	// Low-RAM hosts (1GB+swap) can need far longer than 10m for a plain go build;
+	// garble is worse. Keep a hard ceiling so the UI does not spin forever.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	resp, err := c.RPC.Generate(ctx, &clientpb.GenerateReq{Config: cfg, Name: req.Name})
 	if err != nil {

@@ -85,8 +85,10 @@ export default function ImplantsPage() {
   const [reconInterval, setReconInterval] = useState('60')
   const [jitter, setJitter] = useState('20')
   const [isBeacon, setIsBeacon] = useState(false)
-  const [obfuscate, setObfuscate] = useState(true)
-  const [polymorph, setPolymorph] = useState(true)
+  // Default off: garble (-literals -tiny) OOMs / never finishes on ~1GB VPS.
+  // Operators on larger hosts can enable Obfuscate / Polymorph explicitly.
+  const [obfuscate, setObfuscate] = useState(false)
+  const [polymorph, setPolymorph] = useState(false)
   const [debug, setDebug] = useState(false)
   const [evasion, setEvasion] = useState(false)
   const [sgnEnabled, setSgnEnabled] = useState(false)
@@ -838,10 +840,18 @@ export default function ImplantsPage() {
           </div>
           <div className="field check">
             <label>
-              <input type="checkbox" checked={polymorph} onChange={(e) => setPolymorph(e.target.checked)} />
+              <input
+                type="checkbox"
+                checked={polymorph}
+                onChange={(e) => {
+                  setPolymorph(e.target.checked)
+                  if (e.target.checked) setObfuscate(true)
+                }}
+              />
               {t('implants.polymorph')}
             </label>
           </div>
+          {obfuscate && <p className="muted span-all">{t('implants.obfuscateHint')}</p>}
           {polymorph && <p className="muted span-all">{t('implants.polymorphHint')}</p>}
           <div className="field check">
             <label>

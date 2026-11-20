@@ -561,10 +561,12 @@ export default {
     beaconHint:
       'Beacon implants sleep and check in on this interval. Tasks queue until the next check-in. Session implants stay interactive.',
     beaconShort: 'beacon',
-    obfuscate: 'Obfuscate',
+    obfuscate: 'Obfuscate (garble)',
+    obfuscateHint:
+      'Runs garble (-literals -tiny). Needs several GB RAM; on ~1GB VPS it often hangs or OOM-kills. Leave off unless the host is large.',
     polymorph: 'Polymorph each generate',
     polymorphHint:
-      'Adds a unique name suffix, keeps garble on, uses Donut entropy 3 for shellcode, and same-length-rewrites bishopfox/buildinfo/COM exports in the downloaded bytes. Protobuf RPC names (GetJitter, sliverpb, …) stay so this UI can open a session. Memory YARA can still hit those after callback. Not an AV bypass.',
+      'Unique name suffix + forces obfuscate/garble + Donut entropy 3 for shellcode + same-length branding rewrite. Heavy on small VPS. Not an AV bypass.',
     debug: 'Debug',
     evasion: 'Evasion',
     httpC2Profile: 'HTTP C2 profile',
