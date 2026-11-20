@@ -165,6 +165,8 @@ purge_old() {
   # Install prefix + CLI symlinks.
   rm -rf "${PREFIX}"
   rm -f "${HOME}/bin/sliver" "${HOME}/bin/sliver-ui" "${HOME}/bin/sliver-server" "${HOME}/bin/sliver-client"
+  as_root rm -f /usr/local/bin/sliver /usr/local/bin/sliver-ui /usr/local/bin/sliver-server /usr/local/bin/sliver-client \
+    /etc/profile.d/sliver-ui.sh >/dev/null 2>&1 || true
 
   if [[ "$KEEP_DATA" -eq 0 ]]; then
     rm -rf "${CONFIG_DIR}"
@@ -227,6 +229,20 @@ ln -sfn "$UI_BIN" "${HOME}/bin/sliver-ui"
 ln -sfn "$SERVER_BIN" "${HOME}/bin/sliver-server"
 ln -sfn "$CLIENT_BIN" "${HOME}/bin/sliver-client"
 ln -sfn "$CLIENT_BIN" "${HOME}/bin/sliver"
+# System-wide CLI so `sliver` works in any shell/SSH without relying on ~/bin PATH.
+if as_root true 2>/dev/null; then
+  as_root ln -sfn "$UI_BIN" /usr/local/bin/sliver-ui
+  as_root ln -sfn "$SERVER_BIN" /usr/local/bin/sliver-server
+  as_root ln -sfn "$CLIENT_BIN" /usr/local/bin/sliver-client
+  as_root ln -sfn "$CLIENT_BIN" /usr/local/bin/sliver
+  as_root tee /etc/profile.d/sliver-ui.sh >/dev/null <<'EOF' || true
+# sliver-ui offline bundle
+export PATH="/usr/local/bin:$PATH"
+EOF
+  ok "system CLI: /usr/local/bin/sliver → sliver-client"
+else
+  warn "no root/sudo — CLI only in ${HOME}/bin (open a new login shell or: export PATH=\"\$HOME/bin:\$PATH\")"
+fi
 ok "installed binaries → ${INSTALL_BIN} (CLI: sliver → sliver-client)"
 
 # Fresh operator profile after clean (or missing).
