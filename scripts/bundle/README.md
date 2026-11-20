@@ -15,10 +15,12 @@ Boshqa hech narsa (`git`, PATH, eski service tozalash, systemd) — `setup.sh` o
 1. Installs OS deps (`git`, `curl`, …) — **generate** fails without `git`
 2. **Full clean** of previous install (systemd units, binaries, `~/.sliver`, UI env, operator profile). Use `--keep-data` only if you intentionally want to keep DB/creds
 3. Installs `sliver-server` + `sliver-ui` + `sliver-client`
-4. Creates `~/bin/sliver` → `sliver-client` and fixes PATH
+4. Creates CLI symlinks: `~/bin/sliver` and (with root/sudo) `/usr/local/bin/sliver` → `sliver-client`
 5. Issues operator `sliverui`, starts services on **`0.0.0.0:8080`**
 6. Seeds `ms-update` HTTP C2 when possible
 7. Writes login to `~/.local/share/sliver-ui/CREDENTIALS.txt`
+
+If `sliver: command not found` without root: `export PATH="$HOME/bin:$PATH"` (or new login shell). With sudo, `/usr/local/bin/sliver` works immediately.
 
 Does **not** download this project from GitHub.
 
