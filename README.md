@@ -25,16 +25,49 @@ Browser / WebView2
    Sliver teamserver
 ```
 
-## Features
+## Features (what is in this repo today)
 
-- **Sessions & beacons** — list, interact, tags, terminal (xterm.js)
-- **Listeners & jobs** — start/stop common C2 listeners from the UI
-- **Implant generation** — build payloads with C2 profiles, limits, and honest OPSEC notes
-- **Host-side Loaders** — compile finished PE/ELF wrappers on the UI host (lab tooling; not an AV bypass claim)
-- **HTTP C2 profiles** — edit and apply profiles; default fingerprint warnings in the UI
-- **Operator auth** — optional UI login via environment credentials
-- **i18n** — English and Simplified Chinese (lockstep keys)
-- **Offline bundle** — pack server + UI for air-gapped / lab VPS install
+### Operator console
+- **Dashboard / overview** — connection status and high-level counts
+- **Sessions & beacons** — list, open, kill; beacon tasking and detail views
+- **Interactive terminal** — xterm.js over a binary WebSocket protocol
+- **Hosts, loot, events, canaries, operators, websites, socks, tasks**
+- **Armory** — extension browsing / install flows exposed in the UI
+
+### Session / beacon tradecraft surfaces
+- **Filesystem** — browse, upload/download (gzip payloads decoded like the official client), mkdir/mv/rm
+- **Process / network / env** — `ps`, kill, netstat, ifconfig, env get/set
+- **Screenshots, registry, services, tokens, pivots, portfwd / rportfwd**
+- **Advanced execution** — exec, assembly, sideload, migrate, dumps, getsystem, psexec, and related helpers (with honest risk copy in the UI)
+
+### Generation & packaging
+- **Implant generate** — OS/arch/format, C2 URLs, limits, optional obfuscate/polymorph (default **off** for small hosts)
+- **HTTP C2 profiles** — list/edit/save; warn when a profile still looks like stock Sliver defaults
+- **Loaders** — host-compile PE/ELF wrappers (MinGW C on Windows amd64/386; Go wrap elsewhere), optional disk `LoadLibrary` path, startup persistence helpers, optional Authenticode signing when tooling is present
+- **Shellcode helpers** — RDI / encoder utilities exposed for lab packaging workflows
+- **Stage listeners** — stage generation and listener management from the UI
+
+### Distribution & ops
+- **Single binary** — React UI embedded with `go:embed`
+- **Optional UI auth** — `SLIVER_UI_USER` / `SLIVER_UI_PASS`
+- **i18n** — English + Simplified Chinese (lockstep keys; CI-tested)
+- **Offline bundle** — `./builder.sh pack` + `setup.sh` one-shot lab install (deps, clean reinstall, `0.0.0.0:8080`)
+- **Bundled Sliver patches** — optional patched teamserver build scripts under `patches/` / `scripts/` (see `docs/BUNDLED_SLIVER.md`)
+
+## Roadmap
+
+Near-term focus (authorized operator UX — not “AV bypass” work):
+
+- [ ] Richer generate progress / cancel and clearer failure messages on low-RAM hosts
+- [ ] Hardening offline bundle for small VPS (memory guidance, healthier defaults)
+- [ ] Session files UX polish (preview encodings, large-file download status)
+- [ ] Broader automated tests around download/decode and loader build paths
+- [ ] Accessibility and keyboard navigation passes on core operator pages
+- [ ] Changelog + tagged releases with reproducible pack artifacts
+- [ ] Contributor docs: architecture map of API ↔ Sliver RPC surfaces
+- [ ] Optional read-only / auditor role for purple-team observation
+
+Community PRs that advance these items are especially welcome.
 
 ## Quick start
 
