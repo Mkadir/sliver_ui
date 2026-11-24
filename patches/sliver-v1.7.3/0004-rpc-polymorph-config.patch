@@ -1,0 +1,26 @@
+diff --git a/server/rpc/rpc-generate.go b/server/rpc/rpc-generate.go
+index d271530..7648d39 100644
+--- a/server/rpc/rpc-generate.go
++++ b/server/rpc/rpc-generate.go
+@@ -91,9 +91,7 @@ func (rpc *Server) Generate(ctx context.Context, req *clientpb.GenerateReq) (*cl
+ 		config.IncludeTCP = models.IsC2Enabled([]string{"tcppivot"}, config.C2)
+ 	}
+ 
+-	if len(config.Exports) == 0 {
+-		config.Exports = []string{"StartW"}
+-	}
++	generate.PolymorphConfig(config)
+ 
+ 	// generate config
+ 	build, err := generate.GenerateConfig(name, config)
+@@ -1096,9 +1094,7 @@ func (rpc *Server) GenerateStage(ctx context.Context, req *clientpb.GenerateStag
+ 		return nil, rpcError(err)
+ 	}
+ 
+-	if len(profile.Config.Exports) == 0 {
+-		profile.Config.Exports = []string{"StartW"}
+-	}
++	generate.PolymorphConfig(profile.Config)
+ 
+ 	// generate config
+ 	build, err := generate.GenerateConfig(name, profile.Config)

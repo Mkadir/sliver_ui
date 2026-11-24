@@ -1,0 +1,31 @@
+diff --git a/implant/sliver/runner/runner.go b/implant/sliver/runner/runner.go
+index 29a49e9..2c5fb23 100644
+--- a/implant/sliver/runner/runner.go
++++ b/implant/sliver/runner/runner.go
+@@ -162,7 +162,7 @@ func beaconStartup() {
+ 			err := beaconMainLoop(beacon)
+ 			if err != nil {
+ 				connectionErrors++
+-				if transports.GetMaxConnectionErrors() < connectionErrors {
++				if {{.Config.MaxConnectionErrors}} < connectionErrors {
+ 					return
+ 				}
+ 			}
+@@ -199,7 +199,7 @@ func sessionStartup() {
+ 					return
+ 				}
+ 				connectionErrors++
+-				if transports.GetMaxConnectionErrors() < connectionErrors {
++				if {{.Config.MaxConnectionErrors}} < connectionErrors {
+ 					return
+ 				}
+ 			}
+@@ -239,7 +239,7 @@ func beaconMainLoop(beacon *transports.Beacon) error {
+ 		log.Printf("Error starting beacon: %s", err)
+ 		// {{end}}
+ 		connectionErrors++
+-		if transports.GetMaxConnectionErrors() < connectionErrors {
++		if {{.Config.MaxConnectionErrors}} < connectionErrors {
+ 			return err
+ 		}
+ 		return nil

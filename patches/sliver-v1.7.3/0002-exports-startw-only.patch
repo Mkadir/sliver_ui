@@ -1,0 +1,13 @@
+diff --git a/client/command/generate/commands.go b/client/command/generate/commands.go
+index fd9e65a..d353677 100644
+--- a/client/command/generate/commands.go
++++ b/client/command/generate/commands.go
+@@ -327,7 +327,7 @@ func coreImplantFlags(name string, cmd *cobra.Command) {
+ 		f.BoolP("evasion", "e", false, "enable evasion features (e.g. overwrite user space hooks)")
+ 		f.BoolP("skip-symbols", "l", false, "skip symbol obfuscation")
+ 		f.String("shellcode-encoder", "", "shellcode encoder to apply (optional; see `shellcode-encoders`)")
+-		f.StringP("exports", "v", "StartW,VoidFunc,DllInstall,DllRegisterServer,DllUnregisterServer", "comma separated list of exports to include in the binary")
++		f.StringP("exports", "v", "StartW", "comma separated list of exports to include in the binary")
+ 		f.StringP("canary", "c", "", "canary domain(s)")
+ 
+ 		// C2 channels

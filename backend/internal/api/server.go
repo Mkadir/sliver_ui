@@ -1,0 +1,764 @@
+package api
+
+import (
+	"bufio"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log"
+	"net"
+	"net/http"
+	"strconv"
+	"sync"
+	"time"
+
+	"sliverui/internal/operator"
+	"sliverui/internal/sliver"
+)
+
+// Server holds the HTTP API handlers and the current Sliver connection.
+type Server struct {
+	mu      sync.RWMutex
+	client  *sliver.Client
+	hub     *sliver.EventHub
+	auth    *AuthGate
+	store   *operator.Store
+	reactID int
+}
+
+// New creates an API server.
+func New() *Server {
+	return &Server{
+		auth:  NewAuthGateFromEnv(),
+		store: operator.Open(operator.DefaultDir(), operator.CLIReactionsPath()),
+	}
+}
+
+func (s *Server) Client() *sliver.Client {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.client
+}
+
+func (s *Server) SetClient(c *sliver.Client) {
+	s.mu.Lock()
+	oldHub := s.hub
+	old := s.client
+	s.hub = nil
+	s.client = c
+	s.mu.Unlock()
+
+	if oldHub != nil {
+		oldHub.Stop()
+	}
+	if old != nil {
+		old.Close()
+	}
+	if c == nil {
+		return
+	}
+
+	hub := sliver.NewEventHub(500)
+	hub.Start(c)
+	s.mu.Lock()
+	if s.client == c {
+		s.hub = hub
+		s.mu.Unlock()
+		s.watchReactions(hub, c)
+		return
+	}
+	s.mu.Unlock()
+	hub.Stop()
+}
+
+func (s *Server) ClearClient() {
+	s.mu.Lock()
+	oldHub := s.hub
+	old := s.client
+	s.hub = nil
+	s.client = nil
+	s.mu.Unlock()
+	if oldHub != nil {
+		oldHub.Stop()
+	}
+	if old != nil {
+		old.Close()
+	}
+}
+
+func (s *Server) eventHub() *sliver.EventHub {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	return s.hub
+}
+
+func (s *Server) eventSnapshot() []sliver.EventView {
+	hub := s.eventHub()
+	if hub == nil {
+		return []sliver.EventView{}
+	}
+	return hub.Snapshot()
+}
+
+func writeJSON(w http.ResponseWriter, code int, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(code)
+	_ = json.NewEncoder(w).Encode(v)
+}
+
+func writeErr(w http.ResponseWriter, code int, msg string) {
+	writeJSON(w, code, map[string]string{"error": msg})
+}
+
+func (s *Server) requireClient(w http.ResponseWriter) *sliver.Client {
+	c := s.Client()
+	if c == nil {
+		writeErr(w, http.StatusServiceUnavailable, "not connected to sliver-server")
+		return nil
+	}
+	return c
+}
+
+// route is a single HTTP handler registration.
+type route struct {
+	method  string
+	pattern string
+	handler http.HandlerFunc
+}
+
+// RoutePattern is the machine-readable contract for a registered route. The
+// frontend contract test (frontend/src/lib/__tests__/routes.test.ts) compares
+// every path the UI calls through api.ts against RoutePatterns(), so a path
+// renamed here (or in api.ts) fails CI instead of silently 404ing.
+type RoutePattern struct {
+	Method  string `json:"method"`
+	Pattern string `json:"pattern"`
+}
+
+// apiRoutes is the single source of truth for the /api handlers: Routes()
+// registers them and RoutePatterns() exports them, so the two cannot drift.
+func (s *Server) apiRoutes() []route {
+	return []route{
+		{"POST", "/api/auth/login", s.auth.handleLogin},
+		{"POST", "/api/auth/logout", s.auth.handleLogout},
+		{"GET", "/api/auth/me", s.auth.handleMe},
+
+		{"GET", "/api/info", s.handleInfo},
+		{"GET", "/api/overview", s.handleOverview},
+		{"POST", "/api/connect", s.handleConnect},
+		{"POST", "/api/disconnect", s.handleDisconnect},
+		{"GET", "/api/profiles", s.handleListProfiles},
+		{"POST", "/api/profiles/{name}", s.handleUseProfile},
+
+		{"GET", "/api/sessions", s.handleSessions},
+		{"POST", "/api/sessions/{id}/kill", s.handleKillSession},
+		{"GET", "/api/sessions/{id}/fs", s.handleFsList},
+		{"GET", "/api/sessions/{id}/fs/pwd", s.handleFsPwd},
+		{"POST", "/api/sessions/{id}/fs/cd", s.handleFsCd},
+		{"GET", "/api/sessions/{id}/fs/cat", s.handleFsCat},
+		{"GET", "/api/sessions/{id}/fs/download", s.handleFsDownload},
+		{"POST", "/api/sessions/{id}/fs/upload", s.handleFsUpload},
+		{"POST", "/api/sessions/{id}/fs/mkdir", s.handleFsMkdir},
+		{"DELETE", "/api/sessions/{id}/fs", s.handleFsRm},
+		{"POST", "/api/sessions/{id}/fs/mv", s.handleFsMv},
+
+		{"GET", "/api/sessions/{id}/ifconfig", s.handleIfconfig},
+		{"GET", "/api/sessions/{id}/ps", s.handlePs},
+		{"POST", "/api/sessions/{id}/ps/kill", s.handleKillProcess},
+		{"GET", "/api/sessions/{id}/netstat", s.handleNetstat},
+		{"GET", "/api/sessions/{id}/env", s.handleGetEnv},
+		{"POST", "/api/sessions/{id}/env", s.handleSetEnv},
+		{"DELETE", "/api/sessions/{id}/env/{key}", s.handleUnsetEnv},
+		{"POST", "/api/sessions/{id}/exec", s.handleExec},
+		{"GET", "/api/sessions/{id}/screenshot", s.handleScreenshot},
+
+		// Extended session operations (P1)
+		{"POST", "/api/sessions/{id}/exec-assembly", s.handleExecAssembly},
+		{"POST", "/api/sessions/{id}/sideload", s.handleSideload},
+		{"POST", "/api/sessions/{id}/spawn-dll", s.handleSpawnDll},
+		{"POST", "/api/sessions/{id}/migrate", s.handleMigrate},
+		{"POST", "/api/sessions/{id}/process-dump", s.handleProcessDump},
+		{"POST", "/api/sessions/{id}/impersonate", s.handleImpersonate},
+		{"POST", "/api/sessions/{id}/make-token", s.handleMakeToken},
+		{"POST", "/api/sessions/{id}/rev-to-self", s.handleRevToSelf},
+		{"POST", "/api/sessions/{id}/getsystem", s.handleGetSystem},
+		{"GET", "/api/sessions/{id}/privs", s.handleGetPrivs},
+		{"GET", "/api/sessions/{id}/token-owner", s.handleCurrentTokenOwner},
+		{"POST", "/api/sessions/{id}/execute-token", s.handleExecuteToken},
+		{"POST", "/api/sessions/{id}/runas", s.handleRunAs},
+		{"GET", "/api/pivots/graph", s.handlePivotGraph},
+		{"GET", "/api/sessions/{id}/pivots/listeners", s.handlePivotListeners},
+		{"POST", "/api/sessions/{id}/pivots/listeners", s.handlePivotStartListener},
+		{"DELETE", "/api/sessions/{id}/pivots/listeners/{pivotID}", s.handlePivotStopListener},
+		{"POST", "/api/sessions/{id}/services", s.handleStartService},
+		{"POST", "/api/sessions/{id}/services/stop", s.handleStopService},
+		{"POST", "/api/sessions/{id}/services/remove", s.handleRemoveService},
+		{"POST", "/api/sessions/{id}/ssh", s.handleRunSSHCommand},
+		{"GET", "/api/sessions/{id}/extensions", s.handleListExtensions},
+		{"POST", "/api/sessions/{id}/extensions/register", s.handleRegisterExtension},
+		{"POST", "/api/sessions/{id}/extensions/call", s.handleCallExtension},
+		{"POST", "/api/sessions/{id}/msf", s.handleMsf},
+		{"POST", "/api/sessions/{id}/msf/remote", s.handleMsfRemote},
+		{"POST", "/api/msf/stage", s.handleMsfStage},
+		{"POST", "/api/stage/generate", s.handleStageGenerate},
+		{"GET", "/api/stage-listeners", s.handleStageListenerList},
+		{"POST", "/api/stage-listeners", s.handleStageListenerStart},
+		{"DELETE", "/api/stage-listeners/{id}", s.handleStageListenerStop},
+		{"POST", "/api/sessions/{id}/backdoor", s.handleBackdoor},
+		{"POST", "/api/sessions/{id}/dll-hijack", s.handleHijackDLL},
+		{"POST", "/api/shellcode/rdi", s.handleShellcodeRDI},
+		{"GET", "/api/shellcode/encoders", s.handleShellcodeEncoders},
+		{"POST", "/api/shellcode/encode", s.handleShellcodeEncode},
+		{"POST", "/api/loaders/build", s.handleLoaderBuild},
+		{"POST", "/api/sessions/{id}/exec-shellcode", s.handleExecuteShellcode},
+		{"POST", "/api/sessions/{id}/psexec", s.handlePsExec},
+		{"POST", "/api/sessions/{id}/ping", s.handlePing},
+
+		{"GET", "/api/sessions/{id}/wasm", s.handleWasmList},
+		{"POST", "/api/sessions/{id}/wasm", s.handleWasmRegister},
+		{"POST", "/api/sessions/{id}/wasm/exec", s.handleWasmExec},
+		{"GET", "/api/beacons/{id}/wasm", s.handleWasmList},
+		{"POST", "/api/beacons/{id}/wasm", s.handleWasmRegister},
+		{"POST", "/api/beacons/{id}/wasm/exec", s.handleWasmExec},
+
+		{"GET", "/api/sessions/{id}/rportfwd", s.handleRportFwdList},
+		{"POST", "/api/sessions/{id}/rportfwd", s.handleRportFwdStart},
+		{"DELETE", "/api/sessions/{id}/rportfwd/{listenerID}", s.handleRportFwdStop},
+
+		{"GET", "/api/operator/notes", s.handleOperatorNotes},
+		{"GET", "/api/operator/notes/{uuid}", s.handleOperatorNote},
+		{"PUT", "/api/operator/notes/{uuid}", s.handleOperatorNote},
+		{"DELETE", "/api/operator/notes/{uuid}", s.handleOperatorNote},
+		{"GET", "/api/operator/locks", s.handleOperatorLocks},
+		{"GET", "/api/operator/locks/{sessionID}", s.handleOperatorLock},
+		{"PUT", "/api/operator/locks/{sessionID}", s.handleOperatorLock},
+		{"DELETE", "/api/operator/locks/{sessionID}", s.handleOperatorLock},
+		{"GET", "/api/operator/reactions", s.handleOperatorReactions},
+		{"POST", "/api/operator/reactions", s.handleOperatorReactions},
+		{"DELETE", "/api/operator/reactions/{id}", s.handleOperatorReactionDelete},
+		{"GET", "/api/operator/reaction-log", s.handleOperatorReactionLog},
+		{"GET", "/api/operator/audit", s.handleOperatorAudit},
+
+		{"GET", "/api/sessions/{id}/reg/subkeys", s.handleRegSubKeys},
+		{"GET", "/api/sessions/{id}/reg/values", s.handleRegValues},
+		{"GET", "/api/sessions/{id}/reg/read", s.handleRegRead},
+		{"POST", "/api/sessions/{id}/reg/write", s.handleRegWrite},
+		{"POST", "/api/sessions/{id}/reg/create-key", s.handleRegCreateKey},
+		{"POST", "/api/sessions/{id}/reg/delete-key", s.handleRegDeleteKey},
+		{"POST", "/api/sessions/{id}/reconfigure", s.handleReconfigure},
+		{"POST", "/api/beacons/{id}/reconfigure", s.handleBeaconReconfigure},
+		{"POST", "/api/sessions/{id}/close", s.handleCloseSession},
+		{"POST", "/api/monitor/start", s.handleMonitorStart},
+		{"POST", "/api/monitor/stop", s.handleMonitorStop},
+		{"POST", "/api/beacons/{id}/open-session", s.handleOpenSession},
+
+		{"GET", "/api/portfwd", s.handlePortfwdList},
+		{"POST", "/api/portfwd", s.handlePortfwdStart},
+		{"DELETE", "/api/portfwd/{port}", s.handlePortfwdStop},
+
+		{"POST", "/api/beacons/prune", s.handlePruneBeacons},
+		{"POST", "/api/sessions/prune", s.handlePruneSessions},
+		{"GET", "/api/aliases", s.handleAliases},
+		{"POST", "/api/aliases", s.handleAliasInstall},
+		{"DELETE", "/api/aliases/{name}", s.handleAliasRemove},
+		{"POST", "/api/sessions/{id}/aliases/{name}/run", s.handleAliasRun},
+
+		{"GET", "/api/beacons", s.handleBeacons},
+		{"GET", "/api/beacons/{id}", s.handleBeacon},
+		{"POST", "/api/beacons/{id}/rename", s.handleRenameBeacon},
+		{"DELETE", "/api/beacons/{id}", s.handleRmBeacon},
+		{"GET", "/api/beacons/{id}/tasks", s.handleBeaconTasks},
+		{"GET", "/api/beacons/{id}/tasks/{taskID}", s.handleBeaconTaskContent},
+		{"POST", "/api/beacons/{id}/tasks/{taskID}/cancel", s.handleCancelBeaconTask},
+		{"POST", "/api/beacons/{id}/exec", s.handleBeaconExec},
+		{"POST", "/api/beacons/{id}/ps", s.handleBeaconPs},
+		{"POST", "/api/beacons/{id}/fs", s.handleBeaconFs},
+		{"POST", "/api/beacons/{id}/screenshot", s.handleBeaconScreenshot},
+		{"POST", "/api/sessions/{id}/rename", s.handleRenameSession},
+
+		{"GET", "/api/implant-profiles", s.handleImplantProfiles},
+		{"POST", "/api/implant-profiles", s.handleSaveImplantProfile},
+		{"DELETE", "/api/implant-profiles/{name}", s.handleDeleteImplantProfile},
+		{"DELETE", "/api/implant-builds/{name}", s.handleDeleteImplantBuild},
+		{"POST", "/api/regenerate", s.handleRegenerate},
+		{"GET", "/api/operators", s.handleGetOperators},
+		{"GET", "/api/compiler", s.handleCompiler},
+		{"GET", "/api/hosts", s.handleHosts},
+		{"GET", "/api/hosts/{uuid}", s.handleHost},
+		{"DELETE", "/api/hosts/{uuid}", s.handleHostRm},
+		{"DELETE", "/api/hosts/{uuid}/iocs/{iocID}", s.handleHostIOCRm},
+
+		{"GET", "/api/websites", s.handleWebsites},
+		{"GET", "/api/websites/{name}", s.handleWebsite},
+		{"POST", "/api/websites/{name}/content", s.handleWebsiteAddContent},
+		{"PUT", "/api/websites/{name}/content", s.handleWebsiteUpdateContent},
+		{"DELETE", "/api/websites/{name}/content", s.handleWebsiteRemoveContent},
+		{"DELETE", "/api/websites/{name}", s.handleWebsiteRemove},
+		{"GET", "/api/canaries", s.handleCanaries},
+
+		{"GET", "/api/http-c2-profiles", s.handleListHTTPC2Profiles},
+		{"GET", "/api/http-c2-profiles/{name}", s.handleGetHTTPC2Profile},
+		{"POST", "/api/http-c2-profiles", s.handleSaveHTTPC2Profile},
+		{"GET", "/api/traffic-encoders", s.handleListTrafficEncoders},
+		{"POST", "/api/traffic-encoders", s.handleAddTrafficEncoder},
+		{"DELETE", "/api/traffic-encoders/{name}", s.handleRemoveTrafficEncoder},
+
+		{"GET", "/api/wg/config", s.handleWGClientConfig},
+		{"GET", "/api/wg/ip", s.handleWGUniqueIP},
+		{"GET", "/api/sessions/{id}/wg/forwarders", s.handleWGForwarders},
+		{"POST", "/api/sessions/{id}/wg/forwarders", s.handleWGStartPortForward},
+		{"DELETE", "/api/sessions/{id}/wg/forwarders/{fwdID}", s.handleWGStopPortForward},
+		{"GET", "/api/sessions/{id}/wg/socks", s.handleWGSocksServers},
+		{"POST", "/api/sessions/{id}/wg/socks", s.handleWGStartSocks},
+		{"DELETE", "/api/sessions/{id}/wg/socks/{serverID}", s.handleWGStopSocks},
+
+		{"GET", "/api/socks", s.handleSocksList},
+		{"POST", "/api/socks", s.handleSocksStart},
+		{"DELETE", "/api/socks/{id}", s.handleSocksStop},
+
+		{"GET", "/api/loot", s.handleLootAll},
+		{"GET", "/api/loot/report", s.handleLootReport},
+		{"POST", "/api/loot", s.handleLootAdd},
+		{"POST", "/api/loot/{id}/rename", s.handleLootRename},
+		{"GET", "/api/loot/{id}", s.handleLootContent},
+		{"DELETE", "/api/loot/{id}", s.handleLootRemove},
+		{"GET", "/api/jobs", s.handleJobs},
+		{"GET", "/api/events", s.handleEvents},
+		{"GET", "/api/builders", s.handleBuilders},
+		{"GET", "/api/external-builders", s.handleExternalBuilders},
+		{"GET", "/api/armory", s.handleArmoryIndex},
+		{"POST", "/api/armory/install", s.handleArmoryInstall},
+		{"POST", "/api/generate", s.handleGenerate},
+		{"POST", "/api/implant-builds/{name}/spoof-metadata", s.handleSpoofMetadata},
+		{"POST", "/api/listeners", s.handleListeners},
+		{"DELETE", "/api/listeners/{id}", s.handleStopListener},
+	}
+}
+
+// Routes registers all HTTP handlers.
+func (s *Server) Routes() http.Handler {
+	mux := http.NewServeMux()
+	for _, r := range s.apiRoutes() {
+		mux.HandleFunc(r.method+" "+r.pattern, r.handler)
+	}
+
+	mux.HandleFunc("/ws/sessions/{id}/terminal", s.handleTerminalWS)
+	mux.HandleFunc("/ws/events", s.handleEventsWS)
+
+	mux.HandleFunc("/api/", func(w http.ResponseWriter, r *http.Request) {
+		writeErr(w, http.StatusNotFound, "not found")
+	})
+	mux.HandleFunc("/ws/", func(w http.ResponseWriter, r *http.Request) {
+		writeErr(w, http.StatusNotFound, "not found")
+	})
+	mux.HandleFunc("/", handleStatic)
+
+	return withCORS(s.withAudit(withLogging(s.auth.Middleware(mux))))
+}
+
+// RoutePatterns returns the full HTTP contract (method + path pattern) of the
+// registered routes, including the terminal WebSocket endpoint.
+func (s *Server) RoutePatterns() []RoutePattern {
+	out := make([]RoutePattern, 0, len(s.apiRoutes())+2)
+	for _, r := range s.apiRoutes() {
+		out = append(out, RoutePattern{Method: r.method, Pattern: r.pattern})
+	}
+	out = append(out, RoutePattern{Method: "GET", Pattern: "/ws/sessions/{id}/terminal"})
+	out = append(out, RoutePattern{Method: "GET", Pattern: "/ws/events"})
+	return out
+}
+
+// statusRecorder captures the response status code for the request log. It
+// forwards Flush and Hijack so WebSocket upgrades (terminal) keep working.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+func (r *statusRecorder) Flush() {
+	if f, ok := r.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := r.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, fmt.Errorf("response writer does not support hijacking")
+}
+
+// withLogging mirrors every API request into the app log (sliver-ui.log on
+// Windows). Mutating methods are tagged so destructive operations (generate,
+// kill, delete, start/stop jobs, ...) form a lightweight audit trail.
+func withLogging(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		next.ServeHTTP(rec, r)
+		op := "GET"
+		if r.Method != http.MethodGet && r.Method != http.MethodOptions {
+			op = "MUTATE"
+		}
+		log.Printf("[api] %s %s %s -> %d (%s)", op, r.Method, r.URL.Path, rec.status, time.Since(start))
+	})
+}
+
+func withCORS(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func (s *Server) handleInfo(w http.ResponseWriter, r *http.Request) {
+	hosts := callbackHostSuggestions()
+	c := s.Client()
+	if c == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"connected": false, "callback_hosts": hosts})
+		return
+	}
+	ver, err := c.Version()
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"connected": false, "error": err.Error(), "callback_hosts": hosts})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"connected": true, "version": ver, "callback_hosts": hosts})
+}
+
+// callbackHostSuggestions lists non-loopback IPv4 addresses on this host so
+// the Implants form can auto-fill a reachable C2 host (e.g. WSL eth0).
+func callbackHostSuggestions() []string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	seen := map[string]bool{}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			var ip net.IP
+			switch v := a.(type) {
+			case *net.IPNet:
+				ip = v.IP
+			case *net.IPAddr:
+				ip = v.IP
+			}
+			if ip == nil || ip.IsLoopback() || ip.IsLinkLocalUnicast() {
+				continue
+			}
+			ip4 := ip.To4()
+			if ip4 == nil {
+				continue
+			}
+			s := ip4.String()
+			if seen[s] {
+				continue
+			}
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
+// handleOverview aggregates top-level counts for the sidebar badges and dashboard.
+func (s *Server) handleOverview(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	type countResult struct {
+		key string
+		n   int
+		err error
+	}
+	results := make(chan countResult, 8)
+	run := func(key string, fn func() (int, error)) {
+		go func() {
+			n, err := fn()
+			results <- countResult{key: key, n: n, err: err}
+		}()
+	}
+
+	run("sessions", func() (int, error) {
+		ss, err := c.Sessions()
+		return len(ss), err
+	})
+	run("beacons", func() (int, error) {
+		bs, err := c.Beacons()
+		return len(bs), err
+	})
+	run("jobs", func() (int, error) {
+		js, err := c.Jobs()
+		return len(js), err
+	})
+	run("builders", func() (int, error) {
+		bs, err := c.ImplantBuilds()
+		return len(bs), err
+	})
+	run("socks", func() (int, error) {
+		return len(c.Socks().List()), nil
+	})
+
+	out := map[string]int{"sessions": 0, "beacons": 0, "jobs": 0, "builders": 0, "socks": 0}
+	timeout := time.After(12 * time.Second)
+	for i := 0; i < 5; i++ {
+		select {
+		case res := <-results:
+			if res.err == nil {
+				out[res.key] = res.n
+			}
+		case <-timeout:
+			writeErr(w, http.StatusGatewayTimeout, "overview collection timed out")
+			return
+		}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"counts": out})
+}
+
+// connectRequest carries the raw sliver-client profile config loaded from a
+// file by the UI. Connection now depends entirely on this config file rather
+// than manually supplied connection parameters.
+type connectRequest struct {
+	Content string `json:"content"`
+}
+
+func (s *Server) handleConnect(w http.ResponseWriter, r *http.Request) {
+	var req connectRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	if req.Content == "" {
+		writeErr(w, http.StatusBadRequest, "missing config file content")
+		return
+	}
+	cfg, err := sliver.ParseProfile([]byte(req.Content))
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	client, err := sliver.Connect(cfg)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.SetClient(client)
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (s *Server) handleDisconnect(w http.ResponseWriter, r *http.Request) {
+	s.ClearClient()
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (s *Server) handleListProfiles(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"profiles": sliver.ListProfiles()})
+}
+
+func (s *Server) handleUseProfile(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name == "" {
+		writeErr(w, http.StatusBadRequest, "invalid profile name")
+		return
+	}
+	cfg, err := sliver.LoadProfile(name)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	client, err := sliver.Connect(cfg)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	s.SetClient(client)
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (s *Server) handleSessions(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	sessions, err := c.Sessions()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"sessions": sessions})
+}
+
+func (s *Server) handleBeacons(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	beacons, err := c.Beacons()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"beacons": beacons})
+}
+
+func (s *Server) handleJobs(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	jobs, err := c.Jobs()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"jobs": jobs})
+}
+
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if s.requireClient(w) == nil {
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"events": s.eventSnapshot()})
+}
+
+func (s *Server) handleKillSession(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	id := r.PathValue("id")
+	if id == "" {
+		writeErr(w, http.StatusBadRequest, "invalid session id")
+		return
+	}
+	if err := c.KillSession(id); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
+
+func (s *Server) handleBuilders(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	builds, err := c.ImplantBuilds()
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"builders": builds})
+}
+
+func (s *Server) handleGenerate(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	var req sliver.GenerateRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	result, err := c.GenerateImplantWithHub(&req, s.eventHub())
+	if err != nil {
+		if errors.Is(err, sliver.ErrDefaultHTTPC2) {
+			writeErr(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (s *Server) handleListeners(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	var req struct {
+		Type            string `json:"type"`
+		Addr            string `json:"addr"`
+		Port            int    `json:"port"`
+		TLS             bool   `json:"tls"`
+		Domain          string `json:"domain"`
+		Website         string `json:"website"`
+		ACME            bool   `json:"acme"`
+		EnforceOTP      bool   `json:"enforce_otp"`
+		LongPollTimeout int64  `json:"long_poll_timeout"`
+		LongPollJitter  int64  `json:"long_poll_jitter"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+	addr := req.Addr
+	if addr == "" {
+		addr = "0.0.0.0"
+	}
+	port := uint32(req.Port)
+	if port == 0 {
+		switch req.Type {
+		case "mtls":
+			port = 8888
+		case "dns":
+			port = 53
+		case "wireguard":
+			port = 53
+		default:
+			port = 80
+		}
+	}
+	jobID, err := c.StartListener(req.Type, addr, port, req.TLS, &sliver.ListenerStartOptions{
+		Domain:          req.Domain,
+		Website:         req.Website,
+		ACME:            req.ACME,
+		EnforceOTP:      req.EnforceOTP,
+		LongPollTimeout: req.LongPollTimeout,
+		LongPollJitter:  req.LongPollJitter,
+	})
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"success": true, "job_id": jobID})
+}
+
+func (s *Server) handleStopListener(w http.ResponseWriter, r *http.Request) {
+	c := s.requireClient(w)
+	if c == nil {
+		return
+	}
+	id, err := strconv.ParseUint(r.PathValue("id"), 10, 32)
+	if err != nil {
+		writeErr(w, http.StatusBadRequest, "invalid job id")
+		return
+	}
+	if err := c.StopJob(uint32(id)); err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"success": true})
+}
