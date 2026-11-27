@@ -178,11 +178,17 @@ func Connect(cfg *ProfileConfig) (*Client, error) {
 	defer cancel()
 
 	addr := fmt.Sprintf("%s:%d", cfg.LHost, cfg.LPort)
+	// Match official sliver-client / sliver-gui: default 4 MiB rejects large
+	// Download/Generate RPCs with ResourceExhausted. Allow ~2 GiB either way.
+	const maxMsgSize = 2 * 1024 * 1024 * 1024
 	conn, err := grpc.DialContext(ctx, addr,
 		grpc.WithTransportCredentials(creds),
 		grpc.WithPerRPCCredentials(tokenAuth{token: cfg.Token}),
 		grpc.WithBlock(),
-		grpc.WithDefaultCallOptions(grpc.MaxCallRecvMsgSize(128*1024*1024)),
+		grpc.WithDefaultCallOptions(
+			grpc.MaxCallRecvMsgSize(maxMsgSize),
+			grpc.MaxCallSendMsgSize(maxMsgSize),
+		),
 	)
 	if err != nil {
 		return nil, err

@@ -119,7 +119,7 @@ func (c *Client) Cd(sessionID, path string) (string, error) {
 
 // Download reads a file from the session and returns its base64-encoded data.
 func (c *Client) Download(sessionID, path string) (string, string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	resp, err := c.RPC.Download(ctx, &cpmfczjv.VmadlastRoc{
 		Path: path,
@@ -176,7 +176,7 @@ func decodeDownloadPayload(encoder string, data []byte) ([]byte, error) {
 
 // Upload writes data to a file on the session.
 func (c *Client) Upload(sessionID, path string, data []byte) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Minute)
 	defer cancel()
 	resp, err := c.RPC.Upload(ctx, &cpmfczjv.KnrcyvFsi{
 		Path: path,
